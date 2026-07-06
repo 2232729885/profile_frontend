@@ -4,7 +4,7 @@
       <el-col :span="8">
         <el-card class="input-card" shadow="never">
           <template #header>分析工作台</template>
-        <el-form label-position="top">
+          <el-form label-position="top">
             <el-form-item label="分析主题">
               <el-input
                 v-model="inputText"
@@ -23,26 +23,24 @@
         <el-card class="history-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span>历史任务</span>
+              <span>历史会话</span>
               <el-button link type="primary" :loading="historyLoading" @click="loadHistoryTasks">刷新</el-button>
             </div>
           </template>
           <div v-loading="historyLoading" class="history-list">
-            <el-empty v-if="!historyLoading && !historyTasks.length" description="暂无历史任务" />
+            <el-empty v-if="!historyLoading && !historySessions.length" description="暂无历史会话" />
             <button
-              v-for="task in historyTasks"
-              :key="task.id"
+              v-for="session in historySessions"
+              :key="session.id"
               class="history-item"
-              :class="{ active: currentTask?.id === task.id }"
+              :class="{ active: currentSessionId === session.id }"
               type="button"
-              @click="selectTask(task)"
+              @click="selectSession(session)"
             >
-              <div class="history-item__text">{{ truncateText(task.inputText, 50) }}</div>
+              <div class="history-item__text">{{ session.title || '未命名会话' }}</div>
               <div class="history-item__meta">
-                <el-tag :type="statusTagType(task.status)" :class="{ 'running-tag': task.status === 'RUNNING' }">
-                  {{ task.status }}
-                </el-tag>
-                <span>{{ formatTime(task.createdAt) }}</span>
+                <span>{{ session.messageCount }} 条消息</span>
+                <span>{{ formatTime(session.lastMessageAt || session.createdAt) }}</span>
               </div>
             </button>
           </div>
@@ -74,6 +72,11 @@
             <el-descriptions-item label="Token">{{ currentTask.llmTokensUsed ?? 0 }}</el-descriptions-item>
             <el-descriptions-item label="会话 ID">{{ currentTask.sessionId || '-' }}</el-descriptions-item>
           </el-descriptions>
+          <el-descriptions v-else-if="currentSession" :column="3" border>
+            <el-descriptions-item label="会话 ID">{{ currentSession.id.slice(0, 8) }}</el-descriptions-item>
+            <el-descriptions-item label="标题">{{ currentSession.title || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="最后消息">{{ formatTime(currentSession.lastMessageAt) }}</el-descriptions-item>
+          </el-descriptions>
           <el-empty v-else description="请选择或创建分析任务" />
           <el-progress
             v-if="currentTask?.status === 'RUNNING'"
@@ -85,7 +88,7 @@
 
         <el-card class="result-card" shadow="never">
           <template #header>分析结果</template>
-          <div v-if="currentTask?.status === 'DONE' && currentTask.resultSummary" class="result-content" v-html="renderedSummary" />
+          <div v-if="displaySummary" class="result-content" v-html="renderedSummary" />
           <el-empty v-else-if="currentTask?.status === 'FAILED'" description="任务执行失败" />
           <el-empty v-else description="分析完成后显示结果" />
         </el-card>
@@ -98,8 +101,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
-import request from '@/api/request'
-import { createAnalysisTask, getAnalysisTask } from '@/api/analysis'
+import {
+  createAnalysisTask,
+  getAnalysisTask,
+  getSessionMessages,
+  getSessions
+} from '@/api/analysis'
 import { useAuthStore } from '@/stores/auth'
 
 interface CreateTaskRequest {
@@ -112,6 +119,24 @@ interface CreateTaskResponse {
   sessionId: string
   status: WorkflowTask['status']
   streamUrl?: string
+}
+
+interface Session {
+  id: string
+  title: string
+  messageCount: number
+  lastMessageAt: string
+  isArchived: boolean
+  createdAt: string
+}
+
+interface SessionMessage {
+  id: string
+  sessionId: string
+  role: 'user' | 'assistant' | 'system' | string
+  content: string
+  taskId?: string | null
+  createdAt: string
 }
 
 interface WorkflowTask {
@@ -138,8 +163,12 @@ const authStore = useAuthStore()
 const inputText = ref('')
 const creating = ref(false)
 const historyLoading = ref(false)
-const historyTasks = ref<WorkflowTask[]>([])
+const historySessions = ref<Session[]>([])
+const currentSession = ref<Session | null>(null)
+const currentSessionId = ref<string | undefined>()
 const currentTask = ref<WorkflowTask | null>(null)
+const sessionTaskMap = ref<Record<string, string>>({})
+const sessionResultSummary = ref('')
 const logs = ref<LogLine[]>([])
 const eventSource = ref<EventSource | null>(null)
 const logContainerRef = ref<HTMLElement | null>(null)
@@ -147,8 +176,8 @@ const runningPercentage = ref(8)
 const progressTimer = ref<number | null>(null)
 
 const shortTaskId = computed(() => currentTask.value?.id.slice(0, 8) || '-')
-const renderedSummary = computed(() => renderMarkdown(currentTask.value?.resultSummary || ''))
-
+const displaySummary = computed(() => currentTask.value?.resultSummary || sessionResultSummary.value)
+const renderedSummary = computed(() => renderMarkdown(displaySummary.value || ''))
 const currentUserId = computed(() => authStore.user?.id || '')
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
@@ -157,11 +186,6 @@ const formatDuration = (durationMs?: number | null) => {
   if (!durationMs) return '-'
   if (durationMs < 1000) return `${durationMs}ms`
   return `${Math.round(durationMs / 1000)}s`
-}
-
-const truncateText = (text: string, maxLength: number) => {
-  if (!text) return '-'
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
 }
 
 const statusTagType = (status: WorkflowTask['status']) => {
@@ -179,14 +203,23 @@ const renderMarkdown = (markdown: string) => {
     .replace(/\n/g, '<br />')
 }
 
-const normalizeHistoryResult = (result: unknown) => {
+const normalizeSessionResult = (result: unknown) => {
   const list = Array.isArray(result)
     ? result
     : ((result as { records?: unknown[]; items?: unknown[] }).records ?? (result as { items?: unknown[] }).items ?? [])
-  return (list as WorkflowTask[])
+  return (list as Session[])
     .slice()
-    .sort((a, b) => dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf())
+    .sort((a, b) => dayjs(b.lastMessageAt || b.createdAt).valueOf() - dayjs(a.lastMessageAt || a.createdAt).valueOf())
     .slice(0, 20)
+}
+
+const normalizeMessageResult = (result: unknown) => {
+  const list = Array.isArray(result)
+    ? result
+    : ((result as { records?: unknown[]; items?: unknown[] }).records ?? (result as { items?: unknown[] }).items ?? [])
+  return (list as SessionMessage[])
+    .slice()
+    .sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf())
 }
 
 const normalizeCreatedTask = (result: CreateTaskResponse, input: string): WorkflowTask => ({
@@ -206,9 +239,9 @@ const normalizeCreatedTask = (result: CreateTaskResponse, input: string): Workfl
 const loadHistoryTasks = async () => {
   historyLoading.value = true
   try {
-    historyTasks.value = normalizeHistoryResult(await request.get('/api/analysis/tasks'))
+    historySessions.value = normalizeSessionResult(await getSessions())
   } catch {
-    ElMessage.error('加载历史任务失败')
+    ElMessage.error('加载历史会话失败')
   } finally {
     historyLoading.value = false
   }
@@ -218,20 +251,14 @@ const loadTaskDetail = async (taskId: string) => {
   try {
     const task = (await getAnalysisTask(taskId)) as unknown as WorkflowTask
     currentTask.value = task
-    upsertHistoryTask(task)
+    currentSessionId.value = task.sessionId
+    sessionTaskMap.value = { ...sessionTaskMap.value, [task.sessionId]: task.id }
+    if (task.resultSummary) sessionResultSummary.value = task.resultSummary
     return task
   } catch {
     ElMessage.error('加载任务详情失败')
     return null
   }
-}
-
-const upsertHistoryTask = (task: WorkflowTask) => {
-  const next = historyTasks.value.filter(item => item.id !== task.id)
-  next.unshift(task)
-  historyTasks.value = next
-    .sort((a, b) => dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf())
-    .slice(0, 20)
 }
 
 const appendLog = (icon: string, message: string) => {
@@ -288,6 +315,7 @@ const connectSse = (taskId: string) => {
     es.close()
     eventSource.value = null
     void loadTaskDetail(taskId)
+    void loadHistoryTasks()
   })
 
   es.addEventListener('task_failed', event => {
@@ -296,6 +324,7 @@ const connectSse = (taskId: string) => {
     es.close()
     eventSource.value = null
     void loadTaskDetail(taskId)
+    void loadHistoryTasks()
   })
 
   es.onmessage = event => {
@@ -321,19 +350,23 @@ const handleStartAnalysis = async () => {
 
   closeSse()
   logs.value = []
+  sessionResultSummary.value = ''
   creating.value = true
   try {
     const payload: CreateTaskRequest = {
-      inputText: trimmed
+      inputText: trimmed,
+      sessionId: currentSessionId.value
     }
-    if (currentTask.value?.sessionId) payload.sessionId = currentTask.value.sessionId
 
     const result = (await createAnalysisTask(payload)) as unknown as CreateTaskResponse
     const task = normalizeCreatedTask(result, trimmed)
     currentTask.value = task
-    upsertHistoryTask(task)
+    currentSessionId.value = result.sessionId
+    sessionTaskMap.value = { ...sessionTaskMap.value, [result.sessionId]: result.taskId }
     appendLog('🚀', '分析任务已启动')
     connectSse(task.id)
+    await loadHistoryTasks()
+    currentSession.value = historySessions.value.find(session => session.id === result.sessionId) ?? null
   } catch {
     ElMessage.error('创建分析任务失败')
   } finally {
@@ -341,14 +374,30 @@ const handleStartAnalysis = async () => {
   }
 }
 
-const selectTask = async (task: WorkflowTask) => {
+const selectSession = async (session: Session) => {
   closeSse()
   logs.value = []
-  const detail = await loadTaskDetail(task.id)
-  if (!detail) return
-  if (detail.status === 'RUNNING') {
-    appendLog('🚀', '已重新连接运行中的分析任务')
-    connectSse(detail.id)
+  currentSession.value = session
+  currentSessionId.value = session.id
+  currentTask.value = null
+  sessionResultSummary.value = ''
+
+  try {
+    const messages = normalizeMessageResult(await getSessionMessages(session.id))
+    const assistantMessages = messages.filter(message => message.role === 'assistant')
+    const lastAssistantMessage = assistantMessages[assistantMessages.length - 1]
+    sessionResultSummary.value = lastAssistantMessage?.content ?? ''
+
+    const taskId = lastAssistantMessage?.taskId || sessionTaskMap.value[session.id]
+    if (taskId) {
+      const detail = await loadTaskDetail(taskId)
+      if (detail?.status === 'RUNNING') {
+        appendLog('🚀', '已重新连接运行中的分析任务')
+        connectSse(detail.id)
+      }
+    }
+  } catch {
+    ElMessage.error('加载会话消息失败')
   }
 }
 
