@@ -134,6 +134,7 @@ interface EntityResult {
   id: string
   label: string
   name: string
+  canonicalName?: string
   importanceScore?: number
 }
 
@@ -234,7 +235,8 @@ const normalizeEntities = (result: unknown) => {
   return (items as EntityResult[]).map(item => ({
     id: item.id,
     label: item.label,
-    name: item.name,
+    name: (item as any).canonicalName ?? (item as any).name ?? '',
+    canonicalName: (item as any).canonicalName,
     importanceScore: item.importanceScore
   }))
 }
