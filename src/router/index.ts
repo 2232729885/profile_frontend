@@ -14,6 +14,7 @@ const router = createRouter({
         { path: 'profiles', component: () => import('@/views/ProfilesView.vue') },
         { path: 'profiles/:personId', component: () => import('@/views/ProfileDetailView.vue') },
         { path: 'search', component: () => import('@/views/SearchView.vue') },
+        { path: 'graph', component: () => import('@/views/GraphView.vue') },
         { path: 'analysis', component: () => import('@/views/AnalysisView.vue') },
         { path: 'identification', component: () => import('@/views/IdentificationView.vue') },
         { path: 'metrics', component: () => import('@/views/MetricsView.vue') },

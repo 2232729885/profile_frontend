@@ -25,6 +25,10 @@
         <el-icon><Search /></el-icon>
         <span>综合检索</span>
       </el-menu-item>
+      <el-menu-item index="/graph">
+        <el-icon><Share /></el-icon>
+        <span>知识图谱</span>
+      </el-menu-item>
       <el-menu-item index="/analysis">
         <el-icon><DataAnalysis /></el-icon>
         <span>分析工作台</span>
@@ -59,6 +63,7 @@ import {
   Odometer,
   Search,
   Setting,
+  Share,
   TrendCharts,
   Upload,
   User
