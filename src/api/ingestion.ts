@@ -18,3 +18,6 @@ export const listRawRecords = (params?: {
 
 export const getRawRecord = (id: string) =>
   request.get(`/api/ingestion/raw-records/${id}`)
+
+export const getContentDetail = (contentId: string) =>
+  request.get(`/api/ingestion/contents/${contentId}`)

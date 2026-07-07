@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="search-view">
     <div class="page-header">
       <div>
@@ -167,7 +167,13 @@
           <div v-loading="searchLoading" class="result-body">
             <el-empty v-if="!searchLoading && !results.length" description="暂无检索结果" />
             <div v-else class="result-list">
-              <el-card v-for="item in results" :key="item.id" class="result-card" shadow="hover">
+              <el-card
+                v-for="item in results"
+                :key="item.id"
+                class="result-card"
+                shadow="hover"
+                @click="openContentDetail(item)"
+              >
                 <div class="result-card__meta">
                   <div class="tag-group">
                     <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
@@ -180,7 +186,7 @@
                 <div class="body-text" :class="{ collapsed: !isExpanded(item.id) && getBodyText(item).length > 200 }">
                   {{ displayBodyText(item) }}
                 </div>
-                <el-button v-if="getBodyText(item).length > 200" link type="primary" @click="toggleExpanded(item.id)">
+                <el-button v-if="getBodyText(item).length > 200" link type="primary" @click.stop="toggleExpanded(item.id)">
                   {{ isExpanded(item.id) ? '收起' : '展开' }}
                 </el-button>
 
@@ -194,10 +200,14 @@
                 <div class="result-card__footer">
                   <div class="hashtag-list">
                     <el-tag v-for="tag in getHashtags(item)" :key="tag" size="small" type="info" effect="plain">#{{ tag }}</el-tag>
+                    <span v-if="item.mediaAssetIds?.length" class="media-count">
+                      <el-icon><Picture /></el-icon>
+                      {{ item.mediaAssetIds.length }} 张图片
+                    </span>
                   </div>
                   <div>
-                    <el-button size="small" :disabled="!item.authorAccountId" @click="goAuthorProfile(item)">查看画像</el-button>
-                    <el-button size="small" type="primary" :disabled="!item.id" @click="openGraphDialog(item)">查看图谱</el-button>
+                    <el-button size="small" :disabled="!item.authorAccountId" @click.stop="goAuthorProfile(item)">查看画像</el-button>
+                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog(item)">查看图谱</el-button>
                   </div>
                 </div>
               </el-card>
@@ -220,6 +230,94 @@
         <el-empty v-else-if="!graphLoading" class="graph-empty" description="暂无图谱数据" />
       </div>
     </el-dialog>
+
+    <el-dialog
+      v-model="contentDetailVisible"
+      title="贴文详情"
+      width="760px"
+      destroy-on-close
+    >
+      <div v-loading="contentDetailLoading">
+        <template v-if="contentDetail">
+          <el-descriptions :column="2" border size="small" class="content-detail-descriptions">
+            <el-descriptions-item label="平台">{{ contentDetail.content.platform || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="类型">{{ contentDetail.content.contentType || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="语言">{{ contentDetail.content.language || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="发布时间">{{ formatTime(contentDetail.content.publishedAt || contentDetail.content.publishTime) }}</el-descriptions-item>
+            <el-descriptions-item label="作者" :span="2">@{{ contentDetail.content.authorPlatformUserId || '-' }}</el-descriptions-item>
+            <el-descriptions-item v-if="contentDetail.content.url" label="原始链接" :span="2">
+              <el-link :href="contentDetail.content.url" target="_blank" type="primary">{{ contentDetail.content.url }}</el-link>
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <div class="content-body-section">
+            <div class="section-title">正文</div>
+            <div class="content-body">{{ contentDetail.content.bodyText || contentDetail.content.text || '（无文字内容）' }}</div>
+          </div>
+
+          <template v-if="contentDetail.assets?.length">
+            <div class="section-title asset-section-title">媒体资产（{{ contentDetail.assets.length }} 个）</div>
+            <div class="asset-grid">
+              <div v-for="asset in contentDetail.assets" :key="asset.id" class="asset-item">
+                <template v-if="asset.assetType === 'image'">
+                  <el-image
+                    :src="buildAssetUrl(asset)"
+                    :preview-src-list="imageAssetUrls(contentDetail.assets)"
+                    fit="cover"
+                    class="asset-image"
+                  >
+                    <template #error>
+                      <div class="asset-error">
+                        <el-icon><Picture /></el-icon>
+                        <span>图片加载失败</span>
+                      </div>
+                    </template>
+                  </el-image>
+                  <div v-if="asset.ocrText" class="asset-ocr">OCR: {{ asset.ocrText }}</div>
+                  <el-tag v-if="asset.sceneLabel" size="small" class="asset-scene">{{ asset.sceneLabel }}</el-tag>
+                </template>
+
+                <template v-else>
+                  <div class="asset-non-image">
+                    <el-icon><VideoPlay /></el-icon>
+                    <span>{{ asset.assetType || '-' }} · {{ asset.mimeType || '-' }}</span>
+                    <el-link v-if="asset.sourceUrl" :href="asset.sourceUrl" target="_blank" type="primary">原始链接</el-link>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <template v-if="hasPropagation(contentDetail.propagation)">
+            <div class="section-title propagation-title">传播链</div>
+            <div class="propagation-section">
+              <div v-if="contentDetail.propagation.parent" class="prop-item">
+                <el-tag size="small" type="warning">回复自</el-tag>
+                <span class="prop-text">{{ contentDetail.propagation.parent.bodyText || '（无文字）' }}</span>
+              </div>
+              <div v-if="contentDetail.propagation.repostOf" class="prop-item">
+                <el-tag size="small" type="success">转发自</el-tag>
+                <span class="prop-text">{{ contentDetail.propagation.repostOf.bodyText || '（无文字）' }}</span>
+                <span class="muted-text">@{{ contentDetail.propagation.repostOf.authorPlatformUserId }}</span>
+              </div>
+              <div v-if="contentDetail.propagation.quotedContent" class="prop-item">
+                <el-tag size="small" type="info">引用自</el-tag>
+                <span class="prop-text">{{ contentDetail.propagation.quotedContent.bodyText || '（无文字）' }}</span>
+                <span class="muted-text">@{{ contentDetail.propagation.quotedContent.authorPlatformUserId }}</span>
+              </div>
+            </div>
+          </template>
+
+          <div class="content-stats-row">
+            <span>赞 {{ contentDetail.content.likeCount ?? 0 }}</span>
+            <span>评论 {{ contentDetail.content.commentCount ?? 0 }}</span>
+            <span>转发 {{ contentDetail.content.repostCount ?? 0 }}</span>
+            <span>引用 {{ contentDetail.content.quoteCount ?? 0 }}</span>
+            <span>浏览 {{ contentDetail.content.viewCount ?? 0 }}</span>
+          </div>
+        </template>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -239,6 +337,8 @@ import dayjs from 'dayjs'
 import VChart from 'vue-echarts'
 import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import { Picture, VideoPlay } from '@element-plus/icons-vue'
+import { getContentDetail } from '@/api/ingestion'
 import {
   searchByImage,
   searchByImageBase64,
@@ -265,16 +365,45 @@ interface MediaContent {
   platform?: string
   language?: string
   contentType?: string
+  publishedAt?: string
   publishTime?: string
   createdAt?: string
   bodyText?: string
   text?: string
+  url?: string
   authorPlatformUserId?: string
   authorAccountId?: string
   likeCount?: number
   commentCount?: number
+  shareCount?: number
   repostCount?: number
+  quoteCount?: number
+  viewCount?: number
   hashtags?: string[] | string
+  mediaAssetIds?: string[]
+}
+
+interface MediaAsset {
+  id: string
+  assetType?: string
+  sourceUrl?: string
+  mimeType?: string
+  minioBucket?: string
+  minioKey?: string
+  ocrText?: string
+  sceneLabel?: string
+}
+
+interface ContentPropagation {
+  parent?: MediaContent | null
+  repostOf?: MediaContent | null
+  quotedContent?: MediaContent | null
+}
+
+interface ContentDetail {
+  content: MediaContent
+  assets: MediaAsset[]
+  propagation: ContentPropagation
 }
 
 interface EntityResult {
@@ -309,6 +438,9 @@ const entityLoading = ref(false)
 const graphLoading = ref(false)
 const graphDialogVisible = ref(false)
 const graphDialogReady = ref(false)
+const contentDetailVisible = ref(false)
+const contentDetailLoading = ref(false)
+const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
 const expandedIds = ref<Set<string>>(new Set())
 const entityResults = ref<EntityResult[]>([])
@@ -599,6 +731,32 @@ const goProfiles = (entity: EntityResult) => {
   router.push({ path: '/profiles', query: { entityId: entity.id, label: entity.label } })
 }
 
+const openContentDetail = async (item: MediaContent) => {
+  contentDetailVisible.value = true
+  contentDetailLoading.value = true
+  contentDetail.value = null
+  try {
+    contentDetail.value = (await getContentDetail(item.id)) as unknown as ContentDetail
+  } catch {
+    ElMessage.error('加载详情失败')
+  } finally {
+    contentDetailLoading.value = false
+  }
+}
+
+const buildAssetUrl = (asset: MediaAsset): string => {
+  if (asset.minioKey && asset.minioBucket) {
+    return `http://172.16.40.232:9000/${asset.minioBucket}/${asset.minioKey}`
+  }
+  return asset.sourceUrl || ''
+}
+
+const imageAssetUrls = (assets: MediaAsset[]): string[] =>
+  assets.filter(asset => asset.assetType === 'image').map(buildAssetUrl).filter(Boolean)
+
+const hasPropagation = (prop?: ContentPropagation | null): boolean =>
+  Boolean(prop && (prop.parent || prop.repostOf || prop.quotedContent))
+
 const openGraphDialog = async (item: MediaContent) => {
   graphDialogReady.value = false
   graphData.value = { nodes: [], relations: [] }
@@ -807,6 +965,7 @@ const graphOption = computed(() => {
 
 .result-card {
   border-radius: 8px;
+  cursor: pointer;
 }
 
 .result-card__meta,
@@ -824,6 +983,124 @@ const graphOption = computed(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.media-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.content-detail-descriptions {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.content-body-section {
+  margin-top: 12px;
+}
+
+.content-body {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.asset-section-title,
+.propagation-title {
+  margin-top: 16px;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.asset-item {
+  min-width: 0;
+}
+
+.asset-image {
+  width: 100%;
+  height: 140px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.asset-error,
+.asset-non-image {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #6b7280;
+  background: #f9fafb;
+}
+
+.asset-non-image {
+  flex-direction: column;
+  padding: 12px;
+}
+
+.asset-ocr {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.asset-scene {
+  margin-top: 4px;
+}
+
+.propagation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prop-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.prop-text {
+  overflow: hidden;
+  color: #374151;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  color: #374151;
+  font-size: 13px;
 }
 
 .body-text {
