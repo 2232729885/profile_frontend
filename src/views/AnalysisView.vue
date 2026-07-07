@@ -200,12 +200,68 @@ const messagesAreaRef = ref<HTMLElement | null>(null)
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
 
-const renderMarkdown = (markdown: string) => {
-  return markdown
-    .replace(/^# (.*)$/gm, '<h3>$1</h3>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^- (.*)$/gm, '<li>$1</li>')
-    .replace(/\n/g, '<br />')
+const renderMarkdown = (markdown: string): string => {
+  if (!markdown) return ''
+
+  let content = markdown
+
+  // 1. 去掉 ```markdown ... ``` 包裹
+  content = content.replace(/^```(?:markdown)?\s*\n?/im, '').replace(/\n?```\s*$/m, '').trim()
+
+  // 2. 标题（h1/h2/h3/h4）
+  content = content.replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+  content = content.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  content = content.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  content = content.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+
+  // 3. 粗体和斜体
+  content = content.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  content = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  content = content.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  content = content.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+  // 4. 无序列表（连续的 - 行包裹在 <ul> 里）
+  content = content.replace(/(^- .+$(\n^- .+$)*)/gm, match => {
+    const items = match.split('\n').map(line =>
+      `<li>${line.replace(/^- /, '')}</li>`
+    ).join('')
+    return `<ul>${items}</ul>`
+  })
+
+  // 5. 有序列表（连续的 1. 2. 行包裹在 <ol> 里）
+  content = content.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, match => {
+    const items = match.split('\n').map(line =>
+      `<li>${line.replace(/^\d+\. /, '')}</li>`
+    ).join('')
+    return `<ol>${items}</ol>`
+  })
+
+  // 6. 分隔线
+  content = content.replace(/^---+$/gm, '<hr />')
+
+  // 7. 段落和换行（标题/列表/hr 之外的行）
+  const lines = content.split('\n')
+  const result: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      result.push('<br />')
+    } else if (
+      trimmed.startsWith('<h') ||
+      trimmed.startsWith('<ul>') ||
+      trimmed.startsWith('<ol>') ||
+      trimmed.startsWith('<hr') ||
+      trimmed.startsWith('<li>') ||
+      trimmed.endsWith('</ul>') ||
+      trimmed.endsWith('</ol>')
+    ) {
+      result.push(trimmed)
+    } else {
+      result.push(`<p>${trimmed}</p>`)
+    }
+  }
+
+  return result.join('\n')
 }
 
 const normalizeSessionResult = (result: unknown) => {
@@ -286,21 +342,46 @@ const safeJsonParse = (value: string) => {
 }
 
 const applyRawAssistantContent = (msg: ChatMessage, raw: string) => {
+  // 优先处理 <think> 标签
   if (raw.includes('<think>') && !raw.includes('</think>')) {
     msg.isThinking = true
     msg.content = ''
     msg.thinkingContent = raw.replace('<think>', '').trim()
-  } else if (raw.includes('</think>')) {
+    return
+  }
+  if (raw.includes('</think>')) {
     msg.isThinking = false
     const thinkStart = raw.indexOf('<think>')
     const thinkEnd = raw.indexOf('</think>')
     msg.thinkingContent = raw.substring(thinkStart >= 0 ? thinkStart + 7 : 0, thinkEnd).trim()
     msg.content = raw.substring(thinkEnd + 8).trim()
-  } else if (!raw.includes('<think>')) {
+    return
+  }
+
+  // 无 <think> 标签：识别推理过程和最终报告的分割点
+  // 最终报告以 ```markdown 或独立 ## 标题行开头
+  const reportStart = findReportStart(raw)
+  if (reportStart > 100) {
+    msg.isThinking = false
+    msg.thinkingContent = raw.substring(0, reportStart).trim()
+    msg.content = raw.substring(reportStart).trim()
+  } else {
     msg.isThinking = false
     msg.thinkingContent = ''
     msg.content = raw
   }
+}
+
+const findReportStart = (raw: string): number => {
+  // 找 ```markdown 的位置
+  const markdownBlock = raw.search(/```(?:markdown)?/i)
+  if (markdownBlock > 0) return markdownBlock
+
+  // 找独立 ## 标题行的位置（行首，前面有换行）
+  const headingMatch = raw.match(/\n(#{1,3} [^\n]+)/)
+  if (headingMatch && headingMatch.index !== undefined) return headingMatch.index
+
+  return -1
 }
 
 const createAssistantMessage = (id: string, rawContent = '', options: Partial<ChatMessage> = {}): ChatMessage => {
@@ -815,19 +896,79 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
+.ai-content :deep(h1) {
+  margin: 16px 0 8px;
+  color: #1a1a2e;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ai-content :deep(h2) {
+  margin: 14px 0 6px;
+  padding-bottom: 4px;
+  color: #1a1a2e;
+  font-size: 16px;
+  font-weight: 700;
+  border-bottom: 1px solid #e4e7ed;
+}
+
 .ai-content :deep(h3) {
-  margin: 12px 0 6px;
+  margin: 12px 0 4px;
+  color: #303133;
   font-size: 15px;
   font-weight: 600;
 }
 
-.ai-content :deep(strong) {
+.ai-content :deep(h4) {
+  margin: 10px 0 4px;
+  color: #606266;
+  font-size: 14px;
   font-weight: 600;
+}
+
+.ai-content :deep(p) {
+  margin: 6px 0;
+  line-height: 1.8;
+}
+
+.ai-content :deep(ul) {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.ai-content :deep(ol) {
+  padding-left: 20px;
+  margin: 6px 0;
 }
 
 .ai-content :deep(li) {
   margin: 4px 0;
-  padding-left: 4px;
+  line-height: 1.7;
+}
+
+.ai-content :deep(strong) {
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+.ai-content :deep(code) {
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 12px;
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+.ai-content :deep(hr) {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid #e4e7ed;
+}
+
+.ai-content :deep(br) {
+  display: block;
+  margin: 4px 0;
+  content: '';
 }
 
 .typing-cursor {
