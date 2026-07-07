@@ -268,7 +268,9 @@ const triggerNarrativeIdentification = async () => {
   triggering.value = true
   try {
     currentTask.value = (await request.post(
-      `/api/identification/narratives/${selectedNarrativeId.value}/identify`
+      `/api/identification/narratives/${selectedNarrativeId.value}/identify`,
+      undefined,
+      { timeout: 150000 }
     )) as unknown as IdentificationTask
     ElMessage.success('识别任务已创建')
     startPolling(currentTask.value.id)
