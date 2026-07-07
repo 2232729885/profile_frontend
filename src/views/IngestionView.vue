@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ingestion-view">
     <div class="page-header">
       <div>
@@ -220,11 +220,41 @@
 
           <el-tabs v-model="rawDetailTab" class="detail-tabs">
             <el-tab-pane label="T1 标注结果" name="t1">
-              <el-collapse v-if="rawDetail.t1Output">
-                <el-collapse-item title="JSON" name="t1-json">
-                  <pre class="json-block">{{ formatJsonString(rawDetail.t1Output) }}</pre>
-                </el-collapse-item>
-              </el-collapse>
+              <template v-if="rawDetail.t1Output">
+                <el-descriptions :column="2" border size="small" class="summary-descriptions">
+                  <el-descriptions-item label="主题">
+                    {{ t1Parsed.annotations?.topics?.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="情感">
+                    {{ t1Parsed.annotations?.sentiment?.label || '-' }}
+                    ({{ t1Parsed.annotations?.sentiment?.score ?? '-' }})
+                  </el-descriptions-item>
+                  <el-descriptions-item label="AIGC 嫌疑">
+                    {{ t1Parsed.annotations?.aigcSuspicion || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="需人工审核">
+                    {{ t1Parsed.qualityControl?.needHumanReview ? '是' : '否' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="摘要" :span="2">
+                    {{ t1Parsed.annotations?.summary || '-' }}
+                  </el-descriptions-item>
+                </el-descriptions>
+
+                <div v-if="t1Parsed.annotations?.entitiesHint?.length">
+                  <div class="detail-section-title">实体提示</div>
+                  <el-table :data="t1Parsed.annotations.entitiesHint" border size="small">
+                    <el-table-column prop="text" label="文本" min-width="120" show-overflow-tooltip />
+                    <el-table-column prop="typeHint" label="类型" width="120" />
+                    <el-table-column prop="stance" label="立场" width="100" />
+                  </el-table>
+                </div>
+
+                <el-collapse class="json-collapse">
+                  <el-collapse-item title="查看完整 JSON" name="t1-json">
+                    <pre class="json-block">{{ formatJsonString(rawDetail.t1Output) }}</pre>
+                  </el-collapse-item>
+                </el-collapse>
+              </template>
               <el-empty v-else description="暂无 T1 标注结果" />
             </el-tab-pane>
 
@@ -245,12 +275,62 @@
                     <el-table-column prop="targetName" label="targetName" min-width="150" show-overflow-tooltip />
                     <el-table-column prop="confidence" label="confidence" width="120" align="right" />
                   </el-table>
+
+                  <template v-if="t2Parsed.events?.length">
+                    <div class="detail-section-title">事件列表</div>
+                    <el-table :data="t2Parsed.events" border size="small">
+                      <el-table-column prop="eventType" label="eventType" width="120" />
+                      <el-table-column prop="canonicalName" label="canonicalName" min-width="180" show-overflow-tooltip />
+                      <el-table-column prop="confidence" label="confidence" width="120" align="right" />
+                    </el-table>
+                  </template>
+
+                  <el-collapse class="json-collapse">
+                    <el-collapse-item title="查看完整 JSON" name="t2-json">
+                      <pre class="json-block">{{ formatJsonString(rawDetail.t2Output) }}</pre>
+                    </el-collapse-item>
+                  </el-collapse>
                 </template>
                 <pre v-else class="json-block">{{ t2Parsed.raw }}</pre>
               </template>
               <el-empty v-else description="暂无 T2 抽取结果" />
             </el-tab-pane>
 
+            <el-tab-pane label="T3 融合结果" name="t3">
+              <template v-if="rawDetail.t3Output">
+                <el-collapse>
+                  <el-collapse-item title="查看完整 JSON" name="t3-json">
+                    <pre class="json-block">{{ formatJsonString(rawDetail.t3Output) }}</pre>
+                  </el-collapse-item>
+                </el-collapse>
+              </template>
+              <el-empty v-else description="暂无 T3 融合结果（T3 已移至后台定时任务处理）" />
+            </el-tab-pane>
+
+            <el-tab-pane label="T4 索引结果" name="t4">
+              <template v-if="rawDetail.t4Output">
+                <el-descriptions :column="2" border size="small" class="summary-descriptions">
+                  <el-descriptions-item label="向量化状态">
+                    {{ t4Parsed.embeddingStatus || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="向量维度">
+                    {{ t4Parsed.embeddingDim || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="模型版本">
+                    {{ t4Parsed.modelVersion || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="耗时(ms)">
+                    {{ t4Parsed.durationMs || '-' }}
+                  </el-descriptions-item>
+                </el-descriptions>
+                <el-collapse>
+                  <el-collapse-item title="查看完整 JSON" name="t4-json">
+                    <pre class="json-block">{{ formatJsonString(rawDetail.t4Output) }}</pre>
+                  </el-collapse-item>
+                </el-collapse>
+              </template>
+              <el-empty v-else description="暂无 T4 索引结果" />
+            </el-tab-pane>
             <el-tab-pane v-if="rawDetail.pipelineStatus === 'FAILED'" label="错误信息" name="error">
               <div class="detail-error">{{ rawDetail.errorMessage || '-' }}</div>
             </el-tab-pane>
@@ -431,18 +511,39 @@ const formatJsonString = (value?: string | null) => {
   }
 }
 
+const t1Parsed = computed<Record<string, any>>(() => {
+  const raw = rawDetail.value?.t1Output ?? ''
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+})
+
 const t2Parsed = computed(() => {
   const raw = rawDetail.value?.t2Output ?? ''
   const parsed = parseJsonValue(raw)
   if (!parsed || typeof parsed !== 'object') {
-    return { parseFailed: Boolean(raw), raw, entities: [], relations: [] }
+    return { parseFailed: Boolean(raw), raw, entities: [], relations: [], events: [] }
   }
-  const data = parsed as { entities?: unknown[]; relations?: unknown[] }
+  const data = parsed as { entities?: unknown[]; relationships?: unknown[]; relations?: unknown[]; events?: unknown[] }
   return {
     parseFailed: false,
     raw,
-    entities: data.entities ?? [],
-    relations: data.relations ?? []
+    entities: (data.entities ?? []) as Record<string, unknown>[],
+    relations: (data.relationships ?? data.relations ?? []) as Record<string, unknown>[],
+    events: (data.events ?? []) as Record<string, unknown>[]
+  }
+})
+
+const t4Parsed = computed<Record<string, any>>(() => {
+  const raw = rawDetail.value?.t4Output ?? ''
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {}
   }
 })
 
@@ -689,6 +790,14 @@ onMounted(() => {
 
 .detail-tabs {
   margin-top: 16px;
+}
+
+.summary-descriptions {
+  margin-bottom: 12px;
+}
+
+.json-collapse {
+  margin-top: 12px;
 }
 
 .detail-section-title {
