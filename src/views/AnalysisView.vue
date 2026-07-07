@@ -1,5 +1,5 @@
 <template>
-  <div class="analysis-view">
+  <div class="analysis-view" @click="hideSessionMenu">
     <aside class="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">分析工作台</span>
@@ -17,11 +17,32 @@
           class="session-item"
           :class="{ active: currentSessionId === session.id }"
           @click="selectSession(session)"
+          @contextmenu.prevent="showSessionMenu($event, session)"
         >
           <el-icon class="session-icon"><ChatLineRound /></el-icon>
           <div class="session-info">
-            <div class="session-title">{{ session.title || '未命名对话' }}</div>
+            <div class="session-title">
+              <el-input
+                v-if="renamingSessionId === session.id"
+                v-model="renameValue"
+                size="small"
+                @blur="confirmRename(session)"
+                @keydown.enter="confirmRename(session)"
+                @keydown.esc="renamingSessionId = null"
+                @click.stop
+                autofocus
+              />
+              <span v-else>{{ session.title || '未命名对话' }}</span>
+            </div>
             <div class="session-time">{{ formatTime(session.lastMessageAt || session.createdAt) }}</div>
+          </div>
+          <div class="session-actions" @click.stop>
+            <el-button link size="small" @click.stop="startRename(session)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
+            <el-button link size="small" @click.stop="deleteSession(session)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
           </div>
         </div>
       </div>
@@ -94,6 +115,24 @@
 
       <div class="input-area">
         <div class="input-box">
+          <el-upload
+            :show-file-list="false"
+            :http-request="handleFileUpload"
+            accept=".txt,.md,.json,.csv"
+            :disabled="creating"
+          >
+            <el-button :icon="Paperclip" circle size="default" :disabled="creating" />
+          </el-upload>
+
+          <el-tag
+            v-if="attachedFile"
+            closable
+            class="attached-file-tag"
+            @close="attachedFile = null"
+          >
+            📎 {{ attachedFile.name }}
+          </el-tag>
+
           <el-input
             v-model="inputText"
             type="textarea"
@@ -155,20 +194,39 @@
         </div>
       </div>
     </el-dialog>
+
+    <div
+      v-if="sessionMenu.visible && sessionMenu.session"
+      class="session-context-menu"
+      :style="{ left: `${sessionMenu.x}px`, top: `${sessionMenu.y}px` }"
+      @click.stop
+    >
+      <button type="button" @click="startRename(sessionMenu.session); hideSessionMenu()">
+        <el-icon><Edit /></el-icon>
+        重命名
+      </button>
+      <button type="button" class="danger" @click="deleteSession(sessionMenu.session); hideSessionMenu()">
+        <el-icon><Delete /></el-icon>
+        删除
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'
-import { ElMessage } from 'element-plus'
-import { ChatLineRound, InfoFilled, Loading, Monitor, Plus, Promotion, User, View } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ChatLineRound, Delete, Edit, InfoFilled, Loading, Monitor, Paperclip, Plus, Promotion, User, View } from '@element-plus/icons-vue'
 import {
   createAnalysisTask,
+  createTaskWithFile,
+  deleteSession as deleteSessionApi,
   getAgentInfo,
   getAnalysisTask,
   getSessionMessages,
-  getSessions
+  getSessions,
+  renameSession
 } from '@/api/analysis'
 
 interface CreateTaskRequest {
@@ -261,6 +319,20 @@ const messagesAreaRef = ref<HTMLElement | null>(null)
 const agentInfoVisible = ref(false)
 const agentInfoLoading = ref(false)
 const agentInfo = ref<AgentInfo | null>(null)
+const renamingSessionId = ref<string | null>(null)
+const renameValue = ref('')
+const attachedFile = ref<File | null>(null)
+const sessionMenu = ref<{
+  visible: boolean
+  x: number
+  y: number
+  session: Session | null
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  session: null
+})
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
 
@@ -574,18 +646,18 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
   return es
 }
 
-const handleSend = async () => {
-  const text = inputText.value.trim()
-  if (!text || creating.value) return
-
-  inputText.value = ''
+const createPendingExchange = (text: string) => {
   messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, thinkingContent: '' })
 
   const aiMsgId = `ai-${Date.now()}`
   const aiMsg = createAssistantMessage(aiMsgId, '', { isStreaming: true, isThinking: false })
   messages.value.push(aiMsg)
   scrollToBottom()
+  return { aiMsgId, aiMsg }
+}
 
+const submitText = async (text: string) => {
+  const { aiMsgId, aiMsg } = createPendingExchange(text)
   closeSse()
   creating.value = true
   try {
@@ -614,6 +686,110 @@ const handleSend = async () => {
   }
 }
 
+const submitWithFile = async (formData: FormData, text: string, fileName: string) => {
+  const { aiMsgId, aiMsg } = createPendingExchange(`${text} [附件: ${fileName}]`)
+  closeSse()
+  creating.value = true
+  try {
+    const result = (await createTaskWithFile(formData)) as unknown as CreateTaskResponse
+    const task = normalizeCreatedTask(result, text)
+    currentTask.value = task
+    currentSessionId.value = result.sessionId
+    sessionTaskMap.value = { ...sessionTaskMap.value, [result.sessionId]: result.taskId }
+    aiMsg.taskId = result.taskId
+    aiMsg.status = result.status
+    connectSseToMessage(result.taskId, aiMsgId)
+    await loadHistoryTasks()
+    currentSession.value = historySessions.value.find(session => session.id === result.sessionId) ?? null
+  } catch {
+    aiMsg.isStreaming = false
+    aiMsg.status = 'FAILED'
+    aiMsg.content = '❌ 带附件任务创建失败，请重试'
+    ElMessage.error('创建带附件分析任务失败')
+  } finally {
+    creating.value = false
+    scrollToBottom()
+  }
+}
+
+const handleSend = async () => {
+  const text = inputText.value.trim()
+  if (!text || creating.value) return
+
+  inputText.value = ''
+  if (attachedFile.value) {
+    const file = attachedFile.value
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('inputText', text)
+    if (currentSessionId.value) formData.append('sessionId', currentSessionId.value)
+    attachedFile.value = null
+    await submitWithFile(formData, text, file.name)
+  } else {
+    await submitText(text)
+  }
+}
+
+const handleFileUpload = (options: any) => {
+  attachedFile.value = options.file as File
+  return false
+}
+
+const showSessionMenu = (_event: MouseEvent, session: Session) => {
+  sessionMenu.value = {
+    visible: true,
+    x: _event.clientX,
+    y: _event.clientY,
+    session
+  }
+}
+
+const hideSessionMenu = () => {
+  sessionMenu.value.visible = false
+}
+
+const startRename = (session: Session) => {
+  renamingSessionId.value = session.id
+  renameValue.value = session.title || ''
+}
+
+const confirmRename = async (session: Session) => {
+  const title = renameValue.value.trim()
+  if (!title) return
+  try {
+    await renameSession(session.id, title)
+    session.title = title
+    ElMessage.success('重命名成功')
+  } catch {
+    ElMessage.error('重命名失败')
+  } finally {
+    renamingSessionId.value = null
+  }
+}
+
+const deleteSession = async (session: Session) => {
+  try {
+    await ElMessageBox.confirm('确定删除这个对话吗？', '删除对话', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonClass: 'el-button--danger'
+    })
+    await deleteSessionApi(session.id)
+    historySessions.value = historySessions.value.filter(item => item.id !== session.id)
+    if (currentSessionId.value === session.id) {
+      closeSse()
+      messages.value = []
+      currentSession.value = null
+      currentSessionId.value = undefined
+      currentTask.value = null
+    }
+    ElMessage.success('已删除')
+  } catch {
+    // 用户取消删除或请求失败时不打断当前页面
+  }
+}
+
 const selectSession = async (session: Session) => {
   closeSse()
   currentSession.value = session
@@ -627,7 +803,10 @@ const selectSession = async (session: Session) => {
       if (message.role === 'user') {
         messages.value.push({ id: message.id, role: 'user', content: message.content, thinkingContent: '' })
       } else if (message.role === 'assistant') {
-        messages.value.push(createAssistantMessage(message.id, message.content, { taskId: message.taskId ?? undefined }))
+        const rawMessage = message as SessionMessage & { taskId?: string | null; workflowTaskId?: string | null }
+        messages.value.push(createAssistantMessage(message.id, message.content, {
+          taskId: rawMessage.taskId ?? rawMessage.workflowTaskId ?? undefined
+        }))
       }
     }
 
@@ -751,6 +930,7 @@ onUnmounted(() => {
 
 .session-info {
   min-width: 0;
+  flex: 1;
 }
 
 .session-title {
@@ -766,6 +946,25 @@ onUnmounted(() => {
   margin-top: 2px;
   font-size: 11px;
   color: #6b6b8a;
+}
+
+.session-actions {
+  display: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.session-item:hover .session-actions {
+  display: flex;
+}
+
+.session-actions .el-button {
+  padding: 2px;
+  color: #a0a0b8;
+}
+
+.session-actions .el-button:hover {
+  color: #ffffff;
 }
 
 .sidebar-footer {
@@ -1098,6 +1297,11 @@ onUnmounted(() => {
   flex: 1;
 }
 
+.attached-file-tag {
+  max-width: 160px;
+  flex-shrink: 0;
+}
+
 .send-btn {
   width: 48px;
   height: 60px;
@@ -1178,6 +1382,40 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.session-context-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 120px;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.session-context-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #303133;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.session-context-menu button:hover {
+  background: #f5f7fa;
+}
+
+.session-context-menu button.danger {
+  color: #f56c6c;
 }
 
 @keyframes thinking {
