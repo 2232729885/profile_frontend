@@ -73,70 +73,93 @@
           <div v-else class="message-row ai-row">
             <div class="avatar ai-avatar">AI</div>
             <div class="message-bubble ai-bubble">
-              <div v-if="message.logs?.length" class="tool-calls">
-                <div
-                  v-for="tool in message.logs"
-                  :key="tool.id"
-                  class="tool-call-card"
-                  :class="`tool-call-card--${tool.status}`"
-                >
-                  <div class="tool-call-header" @click="toggleToolDetail(tool.id)">
-                    <span class="tool-call-icon">{{ toolIcon(tool.stepName) }}</span>
-                    <span class="tool-call-name">{{ toolLabel(tool.stepName) }}</span>
-                    <span class="tool-call-status">
-                      <span v-if="tool.status === 'running'" class="tool-status-running">
-                        <span class="spinner"></span>
-                        执行中...
-                      </span>
-                      <span v-else-if="tool.status === 'done'" class="tool-status-done">
-                        ✓ {{ tool.durationMs }}ms
-                        <span v-if="tool.resultCount !== '' && tool.resultCount !== undefined" class="tool-result-count">
-                          · 返回 {{ tool.resultCount }} 条
-                        </span>
-                      </span>
-                      <span v-else class="tool-status-failed">✗ 失败</span>
-                    </span>
-                    <span class="tool-call-toggle">
-                      {{ expandedToolIds.has(tool.id) ? '▲' : '▼' }}
-                    </span>
-                  </div>
-
-                  <div v-if="expandedToolIds.has(tool.id)" class="tool-call-detail">
-                    <div v-if="tool.input && Object.keys(tool.input).length" class="tool-detail-section">
-                      <div class="tool-detail-label">输入</div>
-                      <pre class="tool-detail-code">{{ JSON.stringify(tool.input, null, 2) }}</pre>
+              <template v-if="message.blocks?.length">
+                <template v-for="(block, idx) in message.blocks" :key="idx">
+                  <template v-if="block.type === 'text'">
+                    <div
+                      v-if="isThinkingBlock(message, block, idx) && displayBlockText(block)"
+                      class="thinking-inline"
+                    >
+                      <el-collapse class="thinking-collapse">
+                        <el-collapse-item>
+                          <template #title>
+                            <span class="thinking-title">
+                              <el-icon><Loading v-if="message.isThinking && idx === message.blocks.length - 1" /><View v-else /></el-icon>
+                              {{ message.isThinking && idx === message.blocks.length - 1 ? '思考中...' : '查看思考过程' }}
+                            </span>
+                          </template>
+                          <div class="thinking-content">{{ displayBlockText(block) }}</div>
+                        </el-collapse-item>
+                      </el-collapse>
                     </div>
-                    <div v-if="tool.status !== 'running' && (tool.output || tool.error)" class="tool-detail-section">
-                      <div class="tool-detail-label">{{ tool.status === 'failed' ? '错误' : '输出' }}</div>
-                      <pre class="tool-detail-code">{{
-                        tool.status === 'failed'
-                          ? tool.error
-                          : JSON.stringify(tool.output, null, 2).substring(0, 500) + (JSON.stringify(tool.output).length > 500 ? '\n...' : '')
-                      }}</pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <el-collapse v-if="message.thinkingContent" class="thinking-collapse">
-                <el-collapse-item>
-                  <template #title>
-                    <span class="thinking-title">
-                      <el-icon><Loading v-if="message.isThinking" /><View v-else /></el-icon>
-                      {{ message.isThinking ? '思考中...' : '查看思考过程' }}
-                    </span>
+                    <div
+                      v-else-if="displayBlockText(block)"
+                      class="ai-content"
+                      v-html="renderMarkdown(displayBlockText(block))"
+                    />
                   </template>
-                  <div class="thinking-content">{{ message.thinkingContent }}</div>
-                </el-collapse-item>
-              </el-collapse>
 
-              <div v-if="message.isThinking && !message.content" class="thinking-dots">
+                  <div
+                    v-else-if="block.type === 'tool'"
+                    class="tool-call-card"
+                    :class="`tool-call-card--${block.tool.status}`"
+                  >
+                    <div class="tool-call-header" @click="toggleToolDetail(block.tool.id)">
+                      <span class="tool-call-icon">{{ toolIcon(block.tool.stepName) }}</span>
+                      <span class="tool-call-name">{{ toolLabel(block.tool.stepName) }}</span>
+                      <span class="tool-call-status">
+                        <span v-if="block.tool.status === 'running'" class="tool-status-running">
+                          <span class="spinner"></span>
+                          执行中...
+                        </span>
+                        <span v-else-if="block.tool.status === 'done'" class="tool-status-done">
+                          ✓ {{ block.tool.durationMs }}ms
+                          <span v-if="block.tool.resultCount !== '' && block.tool.resultCount !== undefined" class="tool-result-count">
+                            · 返回 {{ block.tool.resultCount }} 条
+                          </span>
+                        </span>
+                        <span v-else class="tool-status-failed">✗ 失败</span>
+                      </span>
+                      <span class="tool-call-toggle">
+                        {{ expandedToolIds.has(block.tool.id) ? '▲' : '▼' }}
+                      </span>
+                    </div>
+
+                    <div v-if="expandedToolIds.has(block.tool.id)" class="tool-call-detail">
+                      <div v-if="block.tool.input && Object.keys(block.tool.input).length" class="tool-detail-section">
+                        <div class="tool-detail-label">输入</div>
+                        <pre class="tool-detail-code">{{ JSON.stringify(block.tool.input, null, 2) }}</pre>
+                      </div>
+                      <div v-if="block.tool.status !== 'running' && (block.tool.output || block.tool.error)" class="tool-detail-section">
+                        <div class="tool-detail-label">{{ block.tool.status === 'failed' ? '错误' : '输出' }}</div>
+                        <pre class="tool-detail-code">{{ renderToolOutput(block.tool) }}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </template>
+
+              <template v-else>
+                <el-collapse v-if="message.thinkingContent" class="thinking-collapse">
+                  <el-collapse-item>
+                    <template #title>
+                      <span class="thinking-title">
+                        <el-icon><Loading v-if="message.isThinking" /><View v-else /></el-icon>
+                        {{ message.isThinking ? '思考中...' : '查看思考过程' }}
+                      </span>
+                    </template>
+                    <div class="thinking-content">{{ message.thinkingContent }}</div>
+                  </el-collapse-item>
+                </el-collapse>
+                <div v-if="message.content" class="ai-content" v-html="renderMarkdown(message.content)" />
+              </template>
+
+              <div v-if="message.isStreaming && !message.blocks?.length" class="thinking-dots">
                 <span class="thinking-dot"></span>
                 <span class="thinking-dot"></span>
                 <span class="thinking-dot"></span>
               </div>
 
-              <div v-if="message.content" class="ai-content" v-html="renderMarkdown(message.content)" />
               <span v-if="message.isStreaming && !message.isThinking" class="typing-cursor">▊</span>
               <div v-if="message.isCancelled" class="cancelled-hint">
                 <el-icon><VideoPause /></el-icon>
@@ -330,11 +353,16 @@ interface ToolCall {
   resultCount?: number | string
 }
 
+type ContentBlock =
+  | { type: 'text'; text: string; isThinking?: boolean }
+  | { type: 'tool'; tool: ToolCall }
+
 interface ChatMessage {
   id: string
   role: 'user' | 'ai'
   content: string
   thinkingContent: string
+  blocks: ContentBlock[]
   isStreaming?: boolean
   isThinking?: boolean
   isCancelled?: boolean
@@ -413,6 +441,86 @@ const toggleToolDetail = (id: string) => {
     expandedToolIds.value.add(id)
   }
   expandedToolIds.value = new Set(expandedToolIds.value)
+}
+
+const renderToolOutput = (tool: ToolCall): string => {
+  if (tool.status === 'failed') return tool.error ?? ''
+  const output = JSON.stringify(tool.output ?? {}, null, 2)
+  return output.substring(0, 500) + (output.length > 500 ? '\n...' : '')
+}
+
+const displayBlockText = (block: ContentBlock): string => {
+  if (block.type !== 'text') return ''
+  return block.text.replace(/<\/?think>/g, '').trim()
+}
+
+const isThinkingBlock = (_msg: ChatMessage, block: ContentBlock, _idx: number): boolean => {
+  return block.type === 'text' && Boolean(block.isThinking)
+}
+
+const getTextBlocksRaw = (msg: ChatMessage): string =>
+  msg.blocks
+    .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text)
+    .join('')
+
+const syncBlockThinkingState = (msg: ChatMessage) => {
+  if (!msg.blocks.length) return
+
+  const raw = getTextBlocksRaw(msg)
+  let thinkingStart = 0
+  let thinkingEnd = 0
+
+  if (raw.includes('<think>') && !raw.includes('</think>')) {
+    thinkingStart = raw.indexOf('<think>')
+    thinkingEnd = raw.length
+  } else if (raw.includes('</think>')) {
+    thinkingStart = Math.max(raw.indexOf('<think>'), 0)
+    thinkingEnd = raw.indexOf('</think>') + '</think>'.length
+  } else {
+    const reportStart = findReportStart(raw)
+    if (reportStart > 100) {
+      thinkingStart = 0
+      thinkingEnd = reportStart
+    }
+  }
+
+  const nextBlocks: ContentBlock[] = []
+  let textOffset = 0
+
+  for (const block of msg.blocks) {
+    if (block.type !== 'text') {
+      nextBlocks.push(block)
+      continue
+    }
+
+    const text = block.text
+    const blockStart = textOffset
+    const blockEnd = textOffset + text.length
+    const cuts = new Set([0, text.length])
+
+    if (thinkingEnd > thinkingStart) {
+      if (thinkingStart > blockStart && thinkingStart < blockEnd) cuts.add(thinkingStart - blockStart)
+      if (thinkingEnd > blockStart && thinkingEnd < blockEnd) cuts.add(thinkingEnd - blockStart)
+    }
+
+    const sortedCuts = [...cuts].sort((a, b) => a - b)
+    for (let index = 0; index < sortedCuts.length - 1; index += 1) {
+      const from = sortedCuts[index]
+      const to = sortedCuts[index + 1]
+      const segment = text.slice(from, to)
+      if (!segment) continue
+      const segmentStart = blockStart + from
+      nextBlocks.push({
+        type: 'text',
+        text: segment,
+        isThinking: thinkingEnd > thinkingStart && segmentStart >= thinkingStart && segmentStart < thinkingEnd
+      })
+    }
+    textOffset = blockEnd
+  }
+
+  msg.blocks = nextBlocks
 }
 
 const renderMarkdown = (markdown: string): string => {
@@ -605,11 +713,15 @@ const createAssistantMessage = (id: string, rawContent = '', options: Partial<Ch
     role: 'ai',
     content: '',
     thinkingContent: '',
+    blocks: rawContent ? [{ type: 'text', text: rawContent }] : [],
     logs: [],
     ...options
   }
   ;(message as any)._raw = rawContent
-  if (rawContent) applyRawAssistantContent(message, rawContent)
+  if (rawContent) {
+    applyRawAssistantContent(message, rawContent)
+    syncBlockThinkingState(message)
+  }
   return message
 }
 
@@ -642,14 +754,17 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const input = data.input as Record<string, unknown> | null
     const msg = getMsg()
     if (!msg) return
-    if (!msg.logs) msg.logs = []
-    msg.logs.push({
+    const toolCall: ToolCall = {
       id: `${stepName}-${Date.now()}`,
       stepName,
       status: 'running',
       startTime: dayjs().format('HH:mm:ss'),
       input: input ?? {}
-    })
+    }
+    msg.blocks.push({ type: 'tool', tool: toolCall })
+    if (!msg.logs) msg.logs = []
+    msg.logs.push(toolCall)
+    expandedToolIds.value = new Set([toolCall.id])
     scrollToBottom()
   })
 
@@ -663,13 +778,15 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
       ? rawResultCount
       : ''
     const msg = getMsg()
-    if (!msg?.logs) return
-    const toolCall = [...msg.logs].reverse().find(tool => tool.stepName === stepName && tool.status === 'running')
-    if (toolCall) {
-      toolCall.status = 'done'
-      toolCall.durationMs = durationMs
-      toolCall.output = output ?? {}
-      toolCall.resultCount = resultCount
+    if (!msg) return
+    const toolBlock = [...msg.blocks]
+      .reverse()
+      .find(block => block.type === 'tool' && block.tool.stepName === stepName && block.tool.status === 'running')
+    if (toolBlock?.type === 'tool') {
+      toolBlock.tool.status = 'done'
+      toolBlock.tool.durationMs = durationMs
+      toolBlock.tool.output = output ?? {}
+      toolBlock.tool.resultCount = resultCount
     }
     scrollToBottom()
   })
@@ -678,12 +795,14 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const data = safeJsonParse((event as MessageEvent).data)
     const stepName = String(data.stepName ?? 'unknown')
     const msg = getMsg()
-    if (!msg?.logs) return
-    const toolCall = [...msg.logs].reverse().find(tool => tool.stepName === stepName && tool.status === 'running')
-    if (toolCall) {
-      toolCall.status = 'failed'
-      toolCall.error = String(data.error ?? '未知错误')
-      toolCall.output = {}
+    if (!msg) return
+    const toolBlock = [...msg.blocks]
+      .reverse()
+      .find(block => block.type === 'tool' && block.tool.stepName === stepName && block.tool.status === 'running')
+    if (toolBlock?.type === 'tool') {
+      toolBlock.tool.status = 'failed'
+      toolBlock.tool.error = String(data.error ?? '未知错误')
+      toolBlock.tool.output = {}
     }
     scrollToBottom()
   })
@@ -694,10 +813,17 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const msg = getMsg()
     if (!msg) return
 
-    const rawContent = (msg as any)._raw ?? ''
-    ;(msg as any)._raw = rawContent + token
-    const raw = (msg as any)._raw as string
+    const lastBlock = msg.blocks[msg.blocks.length - 1]
+    if (lastBlock?.type === 'text') {
+      lastBlock.text += token
+    } else {
+      msg.blocks.push({ type: 'text', text: token })
+    }
+
+    const raw = getTextBlocksRaw(msg)
+    ;(msg as any)._raw = raw
     applyRawAssistantContent(msg, raw)
+    syncBlockThinkingState(msg)
     scrollToBottom()
   })
 
@@ -710,8 +836,12 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
       msg.status = 'DONE'
       if (!msg.content && !msg.thinkingContent) {
         const summary = String(data.summary ?? '')
+        if (summary && !msg.blocks.some(block => block.type === 'text')) {
+          msg.blocks.push({ type: 'text', text: summary })
+        }
         ;(msg as any)._raw = summary
         applyRawAssistantContent(msg, summary)
+        syncBlockThinkingState(msg)
       }
     }
     es.close()
@@ -728,6 +858,7 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
       msg.isThinking = false
       msg.status = 'FAILED'
       msg.content = msg.content || `❌ 分析失败：${String(data.error ?? '未知错误')}`
+      msg.blocks.push({ type: 'text', text: msg.content })
     }
     es.close()
     if (eventSource.value === es) eventSource.value = null
@@ -763,7 +894,7 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
 }
 
 const createPendingExchange = (text: string) => {
-  messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, thinkingContent: '' })
+  messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, thinkingContent: '', blocks: [] })
 
   const aiMsgId = `ai-${Date.now()}`
   const aiMsg = createAssistantMessage(aiMsgId, '', { isStreaming: true, isThinking: false })
@@ -938,7 +1069,7 @@ const selectSession = async (session: Session) => {
     const sessionMessages = normalizeMessageResult(await getSessionMessages(session.id))
     for (const message of sessionMessages) {
       if (message.role === 'user') {
-        messages.value.push({ id: message.id, role: 'user', content: message.content, thinkingContent: '' })
+        messages.value.push({ id: message.id, role: 'user', content: message.content, thinkingContent: '', blocks: [] })
       } else if (message.role === 'assistant') {
         const rawMessage = message as SessionMessage & { taskId?: string | null; workflowTaskId?: string | null }
         messages.value.push(createAssistantMessage(message.id, message.content, {
@@ -948,7 +1079,7 @@ const selectSession = async (session: Session) => {
     }
 
     if (!messages.value.length && session.title) {
-      messages.value.push({ id: `hist-${session.id}`, role: 'user', content: session.title, thinkingContent: '' })
+      messages.value.push({ id: `hist-${session.id}`, role: 'user', content: session.title, thinkingContent: '', blocks: [] })
     }
 
     const lastAiMessage = [...messages.value].reverse().find(message => message.role === 'ai')
@@ -967,7 +1098,7 @@ const selectSession = async (session: Session) => {
     }
   } catch {
     ElMessage.error('加载会话消息失败')
-    messages.value = [{ id: `hist-${session.id}`, role: 'user', content: session.title || '', thinkingContent: '' }]
+    messages.value = [{ id: `hist-${session.id}`, role: 'user', content: session.title || '', thinkingContent: '', blocks: [] }]
   } finally {
     scrollToBottom()
   }
@@ -1241,6 +1372,7 @@ onUnmounted(() => {
 
 .tool-call-card {
   overflow: hidden;
+  margin: 8px 0;
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   font-size: 13px;
