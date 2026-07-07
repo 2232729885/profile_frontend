@@ -73,20 +73,50 @@
           <div v-else class="message-row ai-row">
             <div class="avatar ai-avatar">AI</div>
             <div class="message-bubble ai-bubble">
-              <el-collapse v-if="message.logs?.length" class="tool-logs-collapse">
-                <el-collapse-item>
-                  <template #title>
-                    <span class="tool-logs-title">
-                      <el-icon><Monitor /></el-icon>
-                      已执行 {{ message.logs.length }} 个工具调用
+              <div v-if="message.logs?.length" class="tool-calls">
+                <div
+                  v-for="tool in message.logs"
+                  :key="tool.id"
+                  class="tool-call-card"
+                  :class="`tool-call-card--${tool.status}`"
+                >
+                  <div class="tool-call-header" @click="toggleToolDetail(tool.id)">
+                    <span class="tool-call-icon">{{ toolIcon(tool.stepName) }}</span>
+                    <span class="tool-call-name">{{ toolLabel(tool.stepName) }}</span>
+                    <span class="tool-call-status">
+                      <span v-if="tool.status === 'running'" class="tool-status-running">
+                        <span class="spinner"></span>
+                        执行中...
+                      </span>
+                      <span v-else-if="tool.status === 'done'" class="tool-status-done">
+                        ✓ {{ tool.durationMs }}ms
+                        <span v-if="tool.resultCount !== '' && tool.resultCount !== undefined" class="tool-result-count">
+                          · 返回 {{ tool.resultCount }} 条
+                        </span>
+                      </span>
+                      <span v-else class="tool-status-failed">✗ 失败</span>
                     </span>
-                  </template>
-                  <div v-for="(log, idx) in message.logs" :key="idx" class="tool-log-item">
-                    <span class="tool-log-time">[{{ log.time }}]</span>
-                    {{ log.icon }} {{ log.message }}
+                    <span class="tool-call-toggle">
+                      {{ expandedToolIds.has(tool.id) ? '▲' : '▼' }}
+                    </span>
                   </div>
-                </el-collapse-item>
-              </el-collapse>
+
+                  <div v-if="expandedToolIds.has(tool.id)" class="tool-call-detail">
+                    <div v-if="tool.input && Object.keys(tool.input).length" class="tool-detail-section">
+                      <div class="tool-detail-label">输入</div>
+                      <pre class="tool-detail-code">{{ JSON.stringify(tool.input, null, 2) }}</pre>
+                    </div>
+                    <div v-if="tool.status !== 'running' && (tool.output || tool.error)" class="tool-detail-section">
+                      <div class="tool-detail-label">{{ tool.status === 'failed' ? '错误' : '输出' }}</div>
+                      <pre class="tool-detail-code">{{
+                        tool.status === 'failed'
+                          ? tool.error
+                          : JSON.stringify(tool.output, null, 2).substring(0, 500) + (JSON.stringify(tool.output).length > 500 ? '\n...' : '')
+                      }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <el-collapse v-if="message.thinkingContent" class="thinking-collapse">
                 <el-collapse-item>
@@ -231,7 +261,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatLineRound, Delete, Edit, InfoFilled, Loading, Monitor, Paperclip, Plus, Promotion, User, VideoPause, View } from '@element-plus/icons-vue'
+import { ChatLineRound, Delete, Edit, InfoFilled, Loading, Paperclip, Plus, Promotion, User, VideoPause, View } from '@element-plus/icons-vue'
 import {
   cancelTask,
   createAnalysisTask,
@@ -288,10 +318,16 @@ interface WorkflowTask {
   createdAt: string
 }
 
-interface LogLine {
-  time: string
-  icon: string
-  message: string
+interface ToolCall {
+  id: string
+  stepName: string
+  status: 'running' | 'done' | 'failed'
+  startTime: string
+  durationMs?: number
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
+  error?: string
+  resultCount?: number | string
 }
 
 interface ChatMessage {
@@ -302,7 +338,7 @@ interface ChatMessage {
   isStreaming?: boolean
   isThinking?: boolean
   isCancelled?: boolean
-  logs?: LogLine[]
+  logs?: ToolCall[]
   taskId?: string
   status?: string
 }
@@ -349,11 +385,35 @@ const sessionMenu = ref<{
   y: 0,
   session: null
 })
+const expandedToolIds = ref<Set<string>>(new Set())
 const isResponding = computed(() =>
   messages.value.some(message => message.role === 'ai' && message.isStreaming)
 )
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
+
+const toolIcon = (stepName: string): string => ({
+  searchContent: '🔍',
+  identifyTargets: '🎯',
+  queryGraph: '🕸️',
+  generateProfile: '👤'
+}[stepName] ?? '🔧')
+
+const toolLabel = (stepName: string): string => ({
+  searchContent: '检索内容',
+  identifyTargets: '识别目标',
+  queryGraph: '查询图谱',
+  generateProfile: '生成画像'
+}[stepName] ?? stepName)
+
+const toggleToolDetail = (id: string) => {
+  if (expandedToolIds.value.has(id)) {
+    expandedToolIds.value.delete(id)
+  } else {
+    expandedToolIds.value.add(id)
+  }
+  expandedToolIds.value = new Set(expandedToolIds.value)
+}
 
 const renderMarkdown = (markdown: string): string => {
   if (!markdown) return ''
@@ -570,13 +630,6 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
   eventSource.value = es
 
   const getMsg = () => messages.value.find(message => message.id === aiMsgId)
-  const pushLog = (icon: string, message: string) => {
-    const msg = getMsg()
-    if (!msg) return
-    if (!msg.logs) msg.logs = []
-    msg.logs.push({ icon, message, time: dayjs().format('HH:mm:ss') })
-    scrollToBottom()
-  }
 
   es.addEventListener('task_started', () => {
     const msg = getMsg()
@@ -587,8 +640,17 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const data = safeJsonParse((event as MessageEvent).data)
     const stepName = String(data.stepName ?? 'unknown')
     const input = data.input as Record<string, unknown> | null
-    const query = String(input?.query ?? input?.nodeId ?? input?.personId ?? '')
-    pushLog('🔍', `调用工具：${stepName}${query ? ` - ${query}` : ''}`)
+    const msg = getMsg()
+    if (!msg) return
+    if (!msg.logs) msg.logs = []
+    msg.logs.push({
+      id: `${stepName}-${Date.now()}`,
+      stepName,
+      status: 'running',
+      startTime: dayjs().format('HH:mm:ss'),
+      input: input ?? {}
+    })
+    scrollToBottom()
   })
 
   es.addEventListener('tool_completed', event => {
@@ -596,13 +658,34 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const stepName = String(data.stepName ?? 'unknown')
     const durationMs = Number(data.durationMs ?? 0)
     const output = data.output as Record<string, unknown> | null
-    const resultCount = output?.total ?? (output?.contents as unknown[])?.length ?? output?.nodeCount ?? ''
-    pushLog('✅', `工具完成：${stepName}，耗时 ${durationMs}ms${resultCount !== '' ? `，返回 ${String(resultCount)} 条` : ''}`)
+    const rawResultCount = output?.total ?? (output?.contents as unknown[])?.length ?? output?.nodeCount ?? (output?.targets as unknown[])?.length ?? ''
+    const resultCount: number | string = typeof rawResultCount === 'number' || typeof rawResultCount === 'string'
+      ? rawResultCount
+      : ''
+    const msg = getMsg()
+    if (!msg?.logs) return
+    const toolCall = [...msg.logs].reverse().find(tool => tool.stepName === stepName && tool.status === 'running')
+    if (toolCall) {
+      toolCall.status = 'done'
+      toolCall.durationMs = durationMs
+      toolCall.output = output ?? {}
+      toolCall.resultCount = resultCount
+    }
+    scrollToBottom()
   })
 
   es.addEventListener('tool_failed', event => {
     const data = safeJsonParse((event as MessageEvent).data)
-    pushLog('❌', `工具失败：${String(data.stepName ?? '')}，${String(data.error ?? '')}`)
+    const stepName = String(data.stepName ?? 'unknown')
+    const msg = getMsg()
+    if (!msg?.logs) return
+    const toolCall = [...msg.logs].reverse().find(tool => tool.stepName === stepName && tool.status === 'running')
+    if (toolCall) {
+      toolCall.status = 'failed'
+      toolCall.error = String(data.error ?? '未知错误')
+      toolCall.output = {}
+    }
+    scrollToBottom()
   })
 
   es.addEventListener('token', event => {
@@ -1149,45 +1232,125 @@ onUnmounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.tool-logs-collapse {
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 12px;
+}
+
+.tool-call-card {
   overflow: hidden;
-  background: #f8f9fa;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
-.tool-logs-collapse :deep(.el-collapse-item__header) {
-  height: 34px;
-  padding: 0 10px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #ebeef5;
+.tool-call-card--running {
+  background: #f0f7ff;
+  border-color: #409eff;
 }
 
-.tool-logs-collapse :deep(.el-collapse-item__content) {
-  padding: 8px 10px;
-  background: #f8f9fa;
+.tool-call-card--done {
+  background: #f0f9eb;
+  border-color: #67c23a;
 }
 
-.tool-logs-title {
+.tool-call-card--failed {
+  background: #fef0f0;
+  border-color: #f56c6c;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-call-header:hover {
+  opacity: 0.85;
+}
+
+.tool-call-icon {
+  font-size: 15px;
+}
+
+.tool-call-name {
+  flex: 1;
+  color: #303133;
+  font-weight: 600;
+}
+
+.tool-call-status {
+  font-size: 12px;
+}
+
+.tool-status-running {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #606266;
-  font-size: 12px;
+  color: #409eff;
 }
 
-.tool-log-item {
-  padding: 3px 0;
-  color: #606266;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.5;
+.tool-status-done {
+  color: #67c23a;
 }
 
-.tool-log-time {
+.tool-status-failed {
+  color: #f56c6c;
+}
+
+.tool-result-count {
   color: #909399;
-  margin-right: 4px;
+}
+
+.tool-call-toggle {
+  margin-left: 4px;
+  color: #909399;
+  font-size: 10px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #409eff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.tool-call-detail {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.tool-detail-section {
+  padding: 8px 12px;
+}
+
+.tool-detail-label {
+  margin-bottom: 4px;
+  color: #909399;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.tool-detail-code {
+  max-height: 200px;
+  padding: 8px;
+  margin: 0;
+  overflow-y: auto;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
 }
 
 .thinking-collapse {
@@ -1518,6 +1681,12 @@ onUnmounted(() => {
   }
   50% {
     opacity: 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
