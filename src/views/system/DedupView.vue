@@ -160,7 +160,8 @@ const loadStats = async () => {
 const loadRecords = async () => {
   recordsLoading.value = true
   try {
-    records.value = (await getFusionRecords()) as unknown as FusionRecord[]
+    const result = await getFusionRecords() as any
+    records.value = (result?.records ?? result ?? []) as FusionRecord[]
   } catch {
     ElMessage.error('加载融合记录失败')
   } finally {
