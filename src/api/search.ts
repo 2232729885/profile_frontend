@@ -7,6 +7,9 @@ export const searchHybrid = (params: any) => request.post('/api/search/hybrid', 
 export const searchGraph = (label: string, nodeId: string) =>
   request.get(`/api/search/graph/${label}/${nodeId}`)
 
+export const getOverviewGraph = (limit = 300) =>
+  request.get('/api/search/graph/overview', { params: { limit } })
+
 export const searchPath = (params: any) => request.get('/api/search/path', { params })
 export const searchEntities = (params: any) => request.get('/api/search/entities', { params })
 export const searchByImage = (params: any) => request.post('/api/search/image', params)

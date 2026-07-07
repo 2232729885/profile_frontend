@@ -47,6 +47,12 @@
           </section>
 
           <section class="control-section">
+            <el-button class="full-width" :loading="graphLoading" @click="loadOverviewGraph">
+              重载全量图谱
+            </el-button>
+          </section>
+
+          <section class="control-section">
             <h2>最短路径查询</h2>
             <el-form label-position="top">
               <el-form-item label="起始节点">
@@ -123,12 +129,12 @@ use([CanvasRenderer, GraphChart, TitleComponent, TooltipComponent, LegendCompone
 </script>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { ElMessage } from 'element-plus'
 import type { DropdownInstance } from 'element-plus'
-import { searchEntities, searchGraph, searchPath } from '@/api/search'
+import { getOverviewGraph, searchEntities, searchGraph, searchPath } from '@/api/search'
 
 interface EntityResult {
   id: string
@@ -148,6 +154,11 @@ interface GraphRelation {
   sourceId: string
   targetId: string
   type: string
+}
+
+interface RawGraphRelation extends Partial<GraphRelation> {
+  fromId?: string
+  toId?: string
 }
 
 interface GraphData {
@@ -242,10 +253,16 @@ const normalizeEntities = (result: unknown) => {
 }
 
 const normalizeGraphData = (result: unknown): GraphData => {
-  const data = result as Partial<GraphData>
+  const data = result as Partial<{ nodes: GraphNode[]; relations: RawGraphRelation[] }>
   return {
     nodes: data.nodes ?? [],
-    relations: data.relations ?? []
+    relations: (data.relations ?? [])
+      .map(relation => ({
+        sourceId: relation.sourceId ?? relation.fromId ?? '',
+        targetId: relation.targetId ?? relation.toId ?? '',
+        type: relation.type ?? ''
+      }))
+      .filter(relation => relation.sourceId && relation.targetId)
   }
 }
 
@@ -282,7 +299,7 @@ const graphOption = computed(() => ({
       roam: true,
       draggable: true,
       force: {
-        repulsion: 300,
+        repulsion: graphData.value.nodes.length > 100 ? 500 : 300,
         gravity: 0.1,
         edgeLength: [80, 200]
       },
@@ -351,6 +368,25 @@ const loadGraph = async (entity: EntityResult, merge: boolean) => {
     graphData.value = merge ? mergeGraphData(graphData.value, incoming) : incoming
   } catch {
     ElMessage.error('加载图谱失败')
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+const loadOverviewGraph = async () => {
+  graphLoading.value = true
+  try {
+    const data = await getOverviewGraph(300)
+    const normalized = normalizeGraphData(data)
+    if (normalized.nodes.length) {
+      currentStart.value = null
+      selectedEntityId.value = ''
+      pathForm.fromId = ''
+      highlightedRelationKeys.value = new Set()
+      graphData.value = normalized
+    }
+  } catch {
+    // Overview loading is optional; manual graph search should remain available.
   } finally {
     graphLoading.value = false
   }
@@ -444,6 +480,10 @@ const handleNodeCommand = async (command: string | number | object) => {
     ElMessage.success('节点 ID 已复制')
   }
 }
+
+onMounted(() => {
+  void loadOverviewGraph()
+})
 </script>
 
 <style scoped>
