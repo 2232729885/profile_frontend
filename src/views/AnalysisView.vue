@@ -25,6 +25,13 @@
           </div>
         </div>
       </div>
+
+      <div class="sidebar-footer">
+        <button class="agent-info-btn" @click="agentInfoVisible = true">
+          <el-icon><InfoFilled /></el-icon>
+          <span>查看 Agent 信息</span>
+        </button>
+      </div>
     </aside>
 
     <main class="chat-main">
@@ -109,16 +116,56 @@
         <div class="input-hint">Ctrl + Enter 发送 · 分析过程由 Qwen3-VL-32B 驱动</div>
       </div>
     </main>
+
+    <el-dialog v-model="agentInfoVisible" title="Agent 信息" width="640px">
+      <div v-loading="agentInfoLoading" class="agent-info-dialog">
+        <div class="agent-section">
+          <div class="agent-section-title">🤖 模型</div>
+          <el-tag type="success">{{ agentInfo?.model }}</el-tag>
+          <span class="agent-meta">最大 Token：{{ agentInfo?.maxTokens }}</span>
+        </div>
+
+        <div class="agent-section">
+          <div class="agent-section-title">🔧 已接入工具（{{ agentInfo?.tools?.length ?? 0 }} 个）</div>
+          <div v-for="tool in agentInfo?.tools" :key="tool.name" class="tool-card">
+            <div class="tool-header">
+              <span class="tool-icon">{{ tool.icon }}</span>
+              <span class="tool-name">{{ tool.name }}</span>
+            </div>
+            <div class="tool-desc">{{ tool.description }}</div>
+            <div class="tool-params">
+              <span class="tool-params-label">参数：</span>
+              <el-tag
+                v-for="param in tool.params"
+                :key="param"
+                size="small"
+                type="info"
+                effect="plain"
+                style="margin: 2px"
+              >
+                {{ param }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-section">
+          <div class="agent-section-title">📋 System Prompt</div>
+          <pre class="system-prompt-box">{{ agentInfo?.systemPrompt }}</pre>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
-import { ChatLineRound, Loading, Monitor, Plus, Promotion, User, View } from '@element-plus/icons-vue'
+import { ChatLineRound, InfoFilled, Loading, Monitor, Plus, Promotion, User, View } from '@element-plus/icons-vue'
 import {
   createAnalysisTask,
+  getAgentInfo,
   getAnalysisTask,
   getSessionMessages,
   getSessions
@@ -186,6 +233,20 @@ interface ChatMessage {
   status?: string
 }
 
+interface AgentTool {
+  name: string
+  description: string
+  icon: string
+  params: string[]
+}
+
+interface AgentInfo {
+  tools: AgentTool[]
+  systemPrompt: string
+  model: string
+  maxTokens: number
+}
+
 const inputText = ref('')
 const creating = ref(false)
 const historyLoading = ref(false)
@@ -197,6 +258,9 @@ const sessionTaskMap = ref<Record<string, string>>({})
 const messages = ref<ChatMessage[]>([])
 const eventSource = ref<EventSource | null>(null)
 const messagesAreaRef = ref<HTMLElement | null>(null)
+const agentInfoVisible = ref(false)
+const agentInfoLoading = ref(false)
+const agentInfo = ref<AgentInfo | null>(null)
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
 
@@ -593,6 +657,19 @@ const selectSession = async (session: Session) => {
   }
 }
 
+watch(agentInfoVisible, async visible => {
+  if (visible && !agentInfo.value) {
+    agentInfoLoading.value = true
+    try {
+      agentInfo.value = (await getAgentInfo()) as unknown as AgentInfo
+    } catch {
+      ElMessage.error('加载 Agent 信息失败')
+    } finally {
+      agentInfoLoading.value = false
+    }
+  }
+})
+
 onMounted(() => {
   void loadHistoryTasks()
 })
@@ -689,6 +766,32 @@ onUnmounted(() => {
   margin-top: 2px;
   font-size: 11px;
   color: #6b6b8a;
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid #2d2d4e;
+}
+
+.agent-info-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: #a0a0b8;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #3d3d5e;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.agent-info-btn:hover {
+  color: #ffffff;
+  background: #2d2d4e;
+  border-color: #5b6ad0;
 }
 
 .chat-main {
@@ -1006,6 +1109,75 @@ onUnmounted(() => {
   color: #909399;
   font-size: 11px;
   text-align: center;
+}
+
+.agent-info-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.agent-section-title {
+  margin-bottom: 10px;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-meta {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.tool-card {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tool-icon {
+  font-size: 16px;
+}
+
+.tool-name {
+  color: #1a1a2e;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tool-desc {
+  margin-bottom: 6px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.tool-params-label {
+  color: #909399;
+  font-size: 12px;
+}
+
+.system-prompt-box {
+  max-height: 300px;
+  padding: 16px;
+  overflow-y: auto;
+  color: #a0f0a0;
+  background: #1a1a2e;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 @keyframes thinking {
