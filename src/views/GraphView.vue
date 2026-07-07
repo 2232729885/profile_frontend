@@ -69,6 +69,11 @@
 
               <div class="detail-hint">双击图谱中的节点可扩展其邻近关系</div>
 
+              <div class="expand-actions">
+                <el-button size="small" @click="expandNode(selectedNodeDetail, 1)">扩展 1 跳</el-button>
+                <el-button size="small" @click="expandNode(selectedNodeDetail, 2)">扩展 2 跳</el-button>
+              </div>
+
               <el-button
                 v-if="selectedNodeDetail.label === 'Person'"
                 size="small"
@@ -444,13 +449,28 @@ const selectEntity = (entityId: string) => {
   graphData.value = { nodes: [node], relations: [] }
 }
 
-const loadGraph = async (entity: EntityResult, merge: boolean) => {
+const loadGraph = async (entity: EntityResult, merge: boolean, hops = 1) => {
   graphLoading.value = true
   try {
-    const incoming = normalizeGraphData(await searchGraph(entity.label, entity.id))
+    const incoming = normalizeGraphData(await searchGraph(entity.label, entity.id, hops))
     graphData.value = merge ? mergeGraphData(graphData.value, incoming) : incoming
   } catch {
     ElMessage.error('加载图谱失败')
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+const expandNode = async (node: SelectedNodeDetail | null, hops: number) => {
+  if (!node) return
+  graphLoading.value = true
+  try {
+    const incoming = normalizeGraphData(await searchGraph(node.label, node.id, hops))
+    graphData.value = mergeGraphData(graphData.value, incoming)
+    currentStart.value = { id: node.id, label: node.label, name: node.name }
+    pathForm.fromId = node.id
+  } catch {
+    ElMessage.error('扩展图谱失败')
   } finally {
     graphLoading.value = false
   }
@@ -543,10 +563,11 @@ const handleChartDblClick = async (params: any) => {
   if (params.dataType !== 'node') return
   const node = findGraphNode(params.data.id)
   if (!node) return
-  const entity = { id: node.id, label: node.label, name: getNodeName(node) }
-  currentStart.value = entity
+  selectedNodeId.value = node.id
+  selectedNodeDetail.value = toSelectedNodeDetail(node)
+  currentStart.value = { id: node.id, label: node.label, name: getNodeName(node) }
   pathForm.fromId = node.id
-  await loadGraph(entity, true)
+  await expandNode(selectedNodeDetail.value, 1)
 }
 
 const handleChartContextMenu = (params: any) => {
@@ -657,6 +678,12 @@ onMounted(() => {
   margin-top: 8px;
   color: #909399;
   font-size: 12px;
+}
+
+.expand-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .profile-link {

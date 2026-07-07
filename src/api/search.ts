@@ -4,8 +4,8 @@ export const searchText = (params: any) => request.post('/api/search/text', para
 export const searchSemantic = (params: any) => request.post('/api/search/semantic', params)
 export const searchHybrid = (params: any) => request.post('/api/search/hybrid', params)
 
-export const searchGraph = (label: string, nodeId: string) =>
-  request.get(`/api/search/graph/${label}/${nodeId}`)
+export const searchGraph = (label: string, nodeId: string, hops = 1) =>
+  request.get(`/api/search/graph/${label}/${nodeId}`, { params: { hops } })
 
 export const getOverviewGraph = (limit = 300) =>
   request.get('/api/search/graph/overview', { params: { limit } })
