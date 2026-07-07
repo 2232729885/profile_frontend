@@ -26,7 +26,7 @@
                 :key="entity.id"
                 class="entity-radio"
                 :label="entity.id"
-                @change="selectEntity(entity)"
+                @change="selectEntity(entity.id)"
               >
                 <span>{{ entity.name }}</span>
                 <el-tag size="small" :type="tagType(entity.label)">{{ entity.label }}</el-tag>
@@ -44,6 +44,42 @@
               <el-button type="primary" :loading="graphLoading" @click="reloadGraph">重新加载</el-button>
               <el-button @click="clearGraph">清空图谱</el-button>
             </div>
+          </section>
+
+          <section v-if="selectedNodeDetail" class="control-section">
+            <el-card class="detail-card" shadow="never">
+              <template #header>
+                <span>节点详情</span>
+                <el-tag size="small" style="margin-left: 8px">{{ selectedNodeDetail.label }}</el-tag>
+              </template>
+
+              <el-descriptions :column="1" size="small" border>
+                <el-descriptions-item label="名称">{{ selectedNodeDetail.name }}</el-descriptions-item>
+                <el-descriptions-item label="ID">
+                  <el-text truncated class="node-id-text">{{ selectedNodeDetail.id }}</el-text>
+                </el-descriptions-item>
+                <el-descriptions-item
+                  v-for="(val, key) in filteredProperties(selectedNodeDetail.properties)"
+                  :key="key"
+                  :label="String(key)"
+                >
+                  {{ String(val) }}
+                </el-descriptions-item>
+              </el-descriptions>
+
+              <div class="detail-hint">双击图谱中的节点可扩展其邻近关系</div>
+
+              <el-button
+                v-if="selectedNodeDetail.label === 'Person'"
+                size="small"
+                type="primary"
+                text
+                class="profile-link"
+                @click="router.push(`/profiles/${selectedNodeDetail.id}`)"
+              >
+                查看画像 →
+              </el-button>
+            </el-card>
           </section>
 
           <section class="control-section">
@@ -94,6 +130,7 @@
             :option="graphOption"
             autoresize
             @click="handleChartClick"
+            @dblclick="handleChartDblClick"
             @contextmenu="handleChartContextMenu"
           />
           <el-empty v-else class="graph-empty" description="请选择节点加载图谱" />
@@ -166,6 +203,13 @@ interface GraphData {
   relations: GraphRelation[]
 }
 
+interface SelectedNodeDetail {
+  id: string
+  label: string
+  name: string
+  properties: Record<string, unknown>
+}
+
 const LABEL_COLORS: Record<string, string> = {
   Person: '#2563eb',
   SocialAccount: '#0891b2',
@@ -188,6 +232,8 @@ const entityResults = ref<EntityResult[]>([])
 const targetResults = ref<EntityResult[]>([])
 const targetKeyword = ref('')
 const currentStart = ref<EntityResult | null>(null)
+const selectedNodeId = ref('')
+const selectedNodeDetail = ref<SelectedNodeDetail | null>(null)
 const graphData = ref<GraphData>({ nodes: [], relations: [] })
 const highlightedRelationKeys = ref<Set<string>>(new Set())
 const contextNode = ref<GraphNode | null>(null)
@@ -266,6 +312,20 @@ const normalizeGraphData = (result: unknown): GraphData => {
   }
 }
 
+const filteredProperties = (props: Record<string, unknown>) => {
+  const skipKeys = new Set(['id', 'source', 'importanceScore'])
+  return Object.fromEntries(
+    Object.entries(props || {}).filter(([key, value]) => !skipKeys.has(key) && value != null && value !== '')
+  )
+}
+
+const toSelectedNodeDetail = (node: GraphNode): SelectedNodeDetail => ({
+  id: node.id,
+  label: node.label,
+  name: getNodeName(node),
+  properties: node.properties ?? {}
+})
+
 const mergeGraphData = (existing: GraphData, incoming: GraphData): GraphData => {
   const existingIds = new Set(existing.nodes.map(node => node.id))
   const newNodes = incoming.nodes.filter(node => !existingIds.has(node.id))
@@ -310,15 +370,28 @@ const graphOption = computed(() => ({
         formatter: (params: any) => params.data.relType
       },
       categories: graphCategories.value,
-      nodes: graphData.value.nodes.map(node => ({
-        id: node.id,
-        name: getNodeName(node),
-        symbolSize: symbolSize(node),
-        category: categoryIndex.value.get(node.label) ?? 0,
-        itemStyle: { color: LABEL_COLORS[node.label] ?? '#64748b' },
-        label: { show: true },
-        nodeLabel: node.label
-      })),
+      nodes: graphData.value.nodes.map(node => {
+        const selected = node.id === selectedNodeId.value
+        const size = symbolSize(node)
+        return {
+          id: node.id,
+          name: getNodeName(node),
+          symbolSize: selected ? size + 8 : size,
+          category: categoryIndex.value.get(node.label) ?? 0,
+          itemStyle: selected
+            ? {
+                color: LABEL_COLORS[node.label] ?? '#64748b',
+                borderColor: '#ffffff',
+                borderWidth: 3,
+                shadowColor: 'rgba(0, 0, 0, 0.4)',
+                shadowBlur: 10
+              }
+            : { color: LABEL_COLORS[node.label] ?? '#64748b' },
+          label: { show: true },
+          nodeLabel: node.label,
+          properties: node.properties
+        }
+      }),
       edges: graphData.value.relations.map(relation => {
         const key = relationKey(relation)
         const highlighted = highlightedRelationKeys.value.has(key)
@@ -355,10 +428,20 @@ const searchNodes = async () => {
   }
 }
 
-const selectEntity = async (entity: EntityResult) => {
+const selectEntity = (entityId: string) => {
+  const entity = entityResults.value.find(item => item.id === entityId)
+  if (!entity) return
+  const node: GraphNode = {
+    id: entity.id,
+    label: entity.label,
+    properties: { canonicalName: entity.name }
+  }
   currentStart.value = entity
   pathForm.fromId = entity.id
-  await loadGraph(entity, false)
+  selectedNodeId.value = entity.id
+  selectedNodeDetail.value = toSelectedNodeDetail(node)
+  highlightedRelationKeys.value = new Set()
+  graphData.value = { nodes: [node], relations: [] }
 }
 
 const loadGraph = async (entity: EntityResult, merge: boolean) => {
@@ -381,6 +464,8 @@ const loadOverviewGraph = async () => {
     if (normalized.nodes.length) {
       currentStart.value = null
       selectedEntityId.value = ''
+      selectedNodeId.value = ''
+      selectedNodeDetail.value = null
       pathForm.fromId = ''
       highlightedRelationKeys.value = new Set()
       graphData.value = normalized
@@ -400,6 +485,9 @@ const reloadGraph = async () => {
 
 const clearGraph = () => {
   graphData.value = { nodes: [], relations: [] }
+  currentStart.value = null
+  selectedNodeId.value = ''
+  selectedNodeDetail.value = null
   highlightedRelationKeys.value = new Set()
 }
 
@@ -443,7 +531,15 @@ const findPath = async () => {
 
 const findGraphNode = (id: string) => graphData.value.nodes.find(node => node.id === id) ?? null
 
-const handleChartClick = async (params: any) => {
+const handleChartClick = (params: any) => {
+  if (params.dataType !== 'node') return
+  const node = findGraphNode(params.data.id)
+  if (!node) return
+  selectedNodeId.value = node.id
+  selectedNodeDetail.value = toSelectedNodeDetail(node)
+}
+
+const handleChartDblClick = async (params: any) => {
   if (params.dataType !== 'node') return
   const node = findGraphNode(params.data.id)
   if (!node) return
@@ -469,6 +565,8 @@ const handleNodeCommand = async (command: string | number | object) => {
   if (command === 'start') {
     const entity = { id: node.id, label: node.label, name: getNodeName(node) }
     currentStart.value = entity
+    selectedNodeId.value = node.id
+    selectedNodeDetail.value = toSelectedNodeDetail(node)
     pathForm.fromId = node.id
     await loadGraph(entity, false)
   }
@@ -545,6 +643,25 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   color: #374151;
+}
+
+.detail-card {
+  border-radius: 6px;
+}
+
+.node-id-text {
+  max-width: 160px;
+}
+
+.detail-hint {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.profile-link {
+  margin-top: 8px;
+  padding: 0;
 }
 
 .button-stack {
