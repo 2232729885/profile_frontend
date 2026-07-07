@@ -50,6 +50,7 @@
         <el-menu-item index="/system/users">用户管理</el-menu-item>
         <el-menu-item index="/system/dedup">实体融合</el-menu-item>
         <el-menu-item index="/system/jobs">定时任务</el-menu-item>
+        <el-menu-item index="/system/kafka">消息队列</el-menu-item>
       </el-sub-menu>
     </el-menu>
   </el-aside>

@@ -21,7 +21,8 @@ const router = createRouter({
         { path: 'system/agents', component: () => import('@/views/system/AgentsView.vue') },
         { path: 'system/users', component: () => import('@/views/system/UsersView.vue') },
         { path: 'system/dedup', component: () => import('@/views/system/DedupView.vue') },
-        { path: 'system/jobs', component: () => import('@/views/system/JobsView.vue') }
+        { path: 'system/jobs', component: () => import('@/views/system/JobsView.vue') },
+        { path: 'system/kafka', component: () => import('@/views/system/KafkaView.vue') }
       ]
     }
   ]
