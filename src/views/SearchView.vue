@@ -198,10 +198,20 @@
                   <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
                 </div>
 
-                <div class="body-text" :class="{ collapsed: !isExpanded(item.id) && getBodyText(item).length > 200 }">
-                  {{ displayBodyText(item) }}
+                <div class="body-text" :class="{ collapsed: !getHighlight(item.id) && !isExpanded(item.id) && getBodyText(item).length > 200 }">
+                  <template v-if="getHighlight(item.id)">
+                    <span
+                      v-for="(fragment, idx) in getHighlight(item.id)"
+                      :key="idx"
+                      v-html="fragment"
+                      class="highlight-fragment"
+                    />
+                  </template>
+                  <template v-else>
+                    {{ displayBodyText(item) }}
+                  </template>
                 </div>
-                <el-button v-if="getBodyText(item).length > 200" link type="primary" @click.stop="toggleExpanded(item.id)">
+                <el-button v-if="!getHighlight(item.id) && getBodyText(item).length > 200" link type="primary" @click.stop="toggleExpanded(item.id)">
                   {{ isExpanded(item.id) ? '收起' : '展开' }}
                 </el-button>
 
@@ -373,6 +383,7 @@ interface SearchResult {
   total: number
   durationMs: number
   searchType: string
+  highlights?: Record<string, Record<string, string[]>>
 }
 
 interface MediaContent {
@@ -457,6 +468,7 @@ const contentDetailVisible = ref(false)
 const contentDetailLoading = ref(false)
 const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
+const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
 const expandedIds = ref<Set<string>>(new Set())
 const entityResults = ref<EntityResult[]>([])
 const graphData = ref<GraphData>({ nodes: [], relations: [] })
@@ -533,6 +545,7 @@ const applySearchResult = (result: unknown, fallbackType: string) => {
   resultMeta.total = normalized.total
   resultMeta.durationMs = normalized.durationMs
   resultMeta.searchType = normalized.searchType
+  resultHighlights.value = normalized.highlights ?? {}
   expandedIds.value = new Set()
 }
 
@@ -541,6 +554,7 @@ const clearResults = () => {
   resultMeta.total = 0
   resultMeta.durationMs = 0
   resultMeta.searchType = ''
+  resultHighlights.value = {}
   expandedIds.value = new Set()
 }
 
@@ -710,6 +724,12 @@ const platformTagType = (platform?: string) => {
 }
 
 const getBodyText = (item: MediaContent) => item.bodyText || item.text || ''
+
+const getHighlight = (contentId: string): string[] | null => {
+  const highlight = resultHighlights.value[contentId]
+  if (!highlight) return null
+  return highlight.body_text ?? highlight.title ?? null
+}
 
 const isExpanded = (id: string) => expandedIds.value.has(id)
 
@@ -1130,6 +1150,26 @@ const graphOption = computed(() => {
   overflow: hidden;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+:deep(.highlight) {
+  padding: 0 2px;
+  border-radius: 2px;
+  background-color: #fef08a;
+  color: #1e293b;
+  font-style: normal;
+}
+
+.highlight-fragment {
+  display: block;
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.highlight-fragment + .highlight-fragment::before {
+  margin-right: 4px;
+  color: #94a3b8;
+  content: '...';
 }
 
 .result-card__stats {
