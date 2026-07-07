@@ -136,6 +136,10 @@
                     >
                       <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
                     </el-upload>
+                    <div v-if="uploadedImagePreviewUrl" class="image-preview">
+                      <p class="image-preview__label">已选择图片：</p>
+                      <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
+                    </div>
                   </el-tab-pane>
                   <el-tab-pane label="Base64" name="base64">
                     <el-form-item label="Base64">
@@ -229,7 +233,7 @@ use([CanvasRenderer, GraphChart, LegendComponent, TitleComponent, TooltipCompone
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import VChart from 'vue-echarts'
@@ -299,6 +303,7 @@ interface GraphData {
 const router = useRouter()
 const activeMode = ref<SearchMode>('text')
 const imageInputMode = ref<'url' | 'upload' | 'base64'>('url')
+const uploadedImagePreviewUrl = ref('')
 const searchLoading = ref(false)
 const entityLoading = ref(false)
 const graphLoading = ref(false)
@@ -353,6 +358,13 @@ const imageForm = reactive({
   topK: 20,
   targetModalities: 'all' as TargetModality
 })
+
+const clearUploadedImagePreview = () => {
+  if (uploadedImagePreviewUrl.value) {
+    URL.revokeObjectURL(uploadedImagePreviewUrl.value)
+    uploadedImagePreviewUrl.value = ''
+  }
+}
 
 const normalizeResult = (result: unknown, fallbackType: string): SearchResult => {
   if (Array.isArray(result)) {
@@ -489,6 +501,9 @@ const handleImageBase64Search = async () => {
 }
 
 const handleImageUpload = async (options: UploadRequestOptions) => {
+  clearUploadedImagePreview()
+  uploadedImagePreviewUrl.value = URL.createObjectURL(options.file as File)
+
   const formData = new FormData()
   formData.append('file', options.file)
   formData.append('topK', String(imageForm.topK))
@@ -602,6 +617,16 @@ const handleGraphDialogOpened = async () => {
   await nextTick()
   graphDialogReady.value = true
 }
+
+watch(imageInputMode, mode => {
+  if (mode !== 'upload') {
+    clearUploadedImagePreview()
+  }
+})
+
+onUnmounted(() => {
+  clearUploadedImagePreview()
+})
 
 const graphCategories = [
   { name: 'Person', itemStyle: { color: '#2563eb' } },
@@ -744,6 +769,23 @@ const graphOption = computed(() => {
 .upload-text {
   padding: 24px 12px;
   color: #6b7280;
+}
+
+.image-preview {
+  margin-top: 8px;
+}
+
+.image-preview__label {
+  margin: 8px 0 4px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.image-preview__image {
+  max-width: 100%;
+  max-height: 200px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
 }
 
 .result-header {
