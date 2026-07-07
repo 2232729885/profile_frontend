@@ -296,16 +296,27 @@ const connectSse = (taskId: string) => {
     appendLog('🚀', '分析任务已启动')
   })
 
-  es.addEventListener('tool_call', event => {
+  es.addEventListener('tool_started', event => {
     const data = safeJsonParse((event as MessageEvent).data)
-    const toolName = String(data.toolName ?? data.name ?? 'unknown')
-    const description = String(data.description ?? data.query ?? data.input ?? '')
-    appendLog('🔍', `调用工具：${toolName}${description ? ` - ${description}` : ''}`)
+    const stepName = String(data.stepName ?? 'unknown')
+    const input = data.input as Record<string, unknown> | null
+    const query = input?.query ?? input?.nodeId ?? input?.personId ?? ''
+    appendLog('🔍', `调用工具：${stepName}${query ? ` - ${String(query)}` : ''}`)
   })
 
-  es.addEventListener('analysis_log', event => {
+  es.addEventListener('tool_completed', event => {
     const data = safeJsonParse((event as MessageEvent).data)
-    appendLog(String(data.icon ?? '📊'), String(data.message ?? '分析过程更新'))
+    const stepName = String(data.stepName ?? 'unknown')
+    const durationMs = Number(data.durationMs ?? 0)
+    const output = data.output as Record<string, unknown> | null
+    const resultCount = output?.total ?? (output?.contents as unknown[])?.length ?? output?.nodeCount ?? ''
+    appendLog('✅', `工具完成：${stepName}，耗时 ${durationMs}ms${resultCount !== '' ? `，返回 ${String(resultCount)} 条` : ''}`)
+  })
+
+  es.addEventListener('tool_failed', event => {
+    const data = safeJsonParse((event as MessageEvent).data)
+    const stepName = String(data.stepName ?? 'unknown')
+    appendLog('❌', `工具失败：${stepName}，原因：${String(data.error ?? '未知')}`)
   })
 
   es.addEventListener('task_completed', event => {
