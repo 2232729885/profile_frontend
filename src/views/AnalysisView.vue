@@ -60,14 +60,26 @@
                 </el-collapse-item>
               </el-collapse>
 
-              <div v-if="message.isStreaming && !message.content" class="thinking">
+              <el-collapse v-if="message.thinkingContent" class="thinking-collapse">
+                <el-collapse-item>
+                  <template #title>
+                    <span class="thinking-title">
+                      <el-icon><Loading v-if="message.isThinking" /><View v-else /></el-icon>
+                      {{ message.isThinking ? '思考中...' : '查看思考过程' }}
+                    </span>
+                  </template>
+                  <div class="thinking-content">{{ message.thinkingContent }}</div>
+                </el-collapse-item>
+              </el-collapse>
+
+              <div v-if="message.isThinking && !message.content" class="thinking-dots">
                 <span class="thinking-dot"></span>
                 <span class="thinking-dot"></span>
                 <span class="thinking-dot"></span>
               </div>
 
               <div v-if="message.content" class="ai-content" v-html="renderMarkdown(message.content)" />
-              <span v-if="message.isStreaming" class="typing-cursor">▊</span>
+              <span v-if="message.isStreaming && !message.isThinking" class="typing-cursor">▊</span>
             </div>
           </div>
         </template>
@@ -104,7 +116,7 @@
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
-import { ChatLineRound, Monitor, Plus, Promotion, User } from '@element-plus/icons-vue'
+import { ChatLineRound, Loading, Monitor, Plus, Promotion, User, View } from '@element-plus/icons-vue'
 import {
   createAnalysisTask,
   getAnalysisTask,
@@ -166,7 +178,9 @@ interface ChatMessage {
   id: string
   role: 'user' | 'ai'
   content: string
+  thinkingContent: string
   isStreaming?: boolean
+  isThinking?: boolean
   logs?: LogLine[]
   taskId?: string
   status?: string
@@ -271,6 +285,38 @@ const safeJsonParse = (value: string) => {
   }
 }
 
+const applyRawAssistantContent = (msg: ChatMessage, raw: string) => {
+  if (raw.includes('<think>') && !raw.includes('</think>')) {
+    msg.isThinking = true
+    msg.content = ''
+    msg.thinkingContent = raw.replace('<think>', '').trim()
+  } else if (raw.includes('</think>')) {
+    msg.isThinking = false
+    const thinkStart = raw.indexOf('<think>')
+    const thinkEnd = raw.indexOf('</think>')
+    msg.thinkingContent = raw.substring(thinkStart >= 0 ? thinkStart + 7 : 0, thinkEnd).trim()
+    msg.content = raw.substring(thinkEnd + 8).trim()
+  } else if (!raw.includes('<think>')) {
+    msg.isThinking = false
+    msg.thinkingContent = ''
+    msg.content = raw
+  }
+}
+
+const createAssistantMessage = (id: string, rawContent = '', options: Partial<ChatMessage> = {}): ChatMessage => {
+  const message: ChatMessage = {
+    id,
+    role: 'ai',
+    content: '',
+    thinkingContent: '',
+    logs: [],
+    ...options
+  }
+  ;(message as any)._raw = rawContent
+  if (rawContent) applyRawAssistantContent(message, rawContent)
+  return message
+}
+
 const startNewConversation = () => {
   closeSse()
   currentSession.value = null
@@ -325,11 +371,15 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
 
   es.addEventListener('token', event => {
     const data = safeJsonParse((event as MessageEvent).data)
+    const token = String(data.token ?? '')
     const msg = getMsg()
-    if (msg) {
-      msg.content += String(data.token ?? '')
-      scrollToBottom()
-    }
+    if (!msg) return
+
+    const rawContent = (msg as any)._raw ?? ''
+    ;(msg as any)._raw = rawContent + token
+    const raw = (msg as any)._raw as string
+    applyRawAssistantContent(msg, raw)
+    scrollToBottom()
   })
 
   es.addEventListener('task_completed', event => {
@@ -337,8 +387,13 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const msg = getMsg()
     if (msg) {
       msg.isStreaming = false
+      msg.isThinking = false
       msg.status = 'DONE'
-      msg.content = msg.content || String(data.summary ?? '')
+      if (!msg.content && !msg.thinkingContent) {
+        const summary = String(data.summary ?? '')
+        ;(msg as any)._raw = summary
+        applyRawAssistantContent(msg, summary)
+      }
     }
     es.close()
     if (eventSource.value === es) eventSource.value = null
@@ -351,6 +406,7 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     const msg = getMsg()
     if (msg) {
       msg.isStreaming = false
+      msg.isThinking = false
       msg.status = 'FAILED'
       msg.content = msg.content || `❌ 分析失败：${String(data.error ?? '未知错误')}`
     }
@@ -362,7 +418,10 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
 
   es.onerror = () => {
     const msg = getMsg()
-    if (msg?.isStreaming) msg.isStreaming = false
+    if (msg?.isStreaming) {
+      msg.isStreaming = false
+      msg.isThinking = false
+    }
     es.close()
     if (eventSource.value === es) eventSource.value = null
   }
@@ -375,10 +434,10 @@ const handleSend = async () => {
   if (!text || creating.value) return
 
   inputText.value = ''
-  messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text })
+  messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, thinkingContent: '' })
 
   const aiMsgId = `ai-${Date.now()}`
-  const aiMsg: ChatMessage = { id: aiMsgId, role: 'ai', content: '', isStreaming: true, logs: [] }
+  const aiMsg = createAssistantMessage(aiMsgId, '', { isStreaming: true, isThinking: false })
   messages.value.push(aiMsg)
   scrollToBottom()
 
@@ -421,20 +480,14 @@ const selectSession = async (session: Session) => {
     const sessionMessages = normalizeMessageResult(await getSessionMessages(session.id))
     for (const message of sessionMessages) {
       if (message.role === 'user') {
-        messages.value.push({ id: message.id, role: 'user', content: message.content })
+        messages.value.push({ id: message.id, role: 'user', content: message.content, thinkingContent: '' })
       } else if (message.role === 'assistant') {
-        messages.value.push({
-          id: message.id,
-          role: 'ai',
-          content: message.content,
-          logs: [],
-          taskId: message.taskId ?? undefined
-        })
+        messages.value.push(createAssistantMessage(message.id, message.content, { taskId: message.taskId ?? undefined }))
       }
     }
 
     if (!messages.value.length && session.title) {
-      messages.value.push({ id: `hist-${session.id}`, role: 'user', content: session.title })
+      messages.value.push({ id: `hist-${session.id}`, role: 'user', content: session.title, thinkingContent: '' })
     }
 
     const lastAiMessage = [...messages.value].reverse().find(message => message.role === 'ai')
@@ -442,14 +495,10 @@ const selectSession = async (session: Session) => {
     if (taskId) {
       const detail = await loadTaskDetail(taskId)
       if (detail?.status === 'RUNNING') {
-        const aiMessage = lastAiMessage ?? {
-          id: `ai-${Date.now()}`,
-          role: 'ai' as const,
-          content: detail.resultSummary ?? '',
+        const aiMessage = lastAiMessage ?? createAssistantMessage(`ai-${Date.now()}`, detail.resultSummary ?? '', {
           isStreaming: true,
-          logs: [],
           taskId
-        }
+        })
         if (!lastAiMessage) messages.value.push(aiMessage)
         aiMessage.isStreaming = true
         connectSseToMessage(taskId, aiMessage.id)
@@ -457,7 +506,7 @@ const selectSession = async (session: Session) => {
     }
   } catch {
     ElMessage.error('加载会话消息失败')
-    messages.value = [{ id: `hist-${session.id}`, role: 'user', content: session.title || '' }]
+    messages.value = [{ id: `hist-${session.id}`, role: 'user', content: session.title || '', thinkingContent: '' }]
   } finally {
     scrollToBottom()
   }
@@ -704,7 +753,42 @@ onUnmounted(() => {
   margin-right: 4px;
 }
 
-.thinking {
+.thinking-collapse {
+  margin-bottom: 12px;
+  background: #f0f4ff;
+  border: 1px solid #d0d8ff;
+  border-radius: 8px;
+}
+
+.thinking-collapse :deep(.el-collapse-item__header) {
+  padding: 8px 12px;
+  background: transparent;
+  border-radius: 8px;
+}
+
+.thinking-collapse :deep(.el-collapse-item__content) {
+  padding: 0;
+}
+
+.thinking-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #5b6ad0;
+  font-size: 12px;
+}
+
+.thinking-content {
+  max-height: 300px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.thinking-dots {
   display: flex;
   gap: 4px;
   padding: 4px 0;
