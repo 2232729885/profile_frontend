@@ -111,11 +111,11 @@
                 <el-form-item label="返回数量 topK">
                   <el-input-number v-model="imageForm.topK" :min="1" :max="100" />
                 </el-form-item>
-                <el-form-item label="跨模态">
+                <el-form-item label="检索范围">
                   <el-radio-group v-model="imageForm.targetModalities">
-                    <el-radio label="all">all</el-radio>
-                    <el-radio label="text">text</el-radio>
-                    <el-radio label="image">image</el-radio>
+                    <el-radio value="all">全部（以图搜文 + 以图搜图）</el-radio>
+                    <el-radio value="text">仅文字内容（以图搜文）</el-radio>
+                    <el-radio value="image">仅图片内容（以图搜图）</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-tabs v-model="imageInputMode" class="image-input-tabs">
@@ -167,6 +167,21 @@
           <div v-loading="searchLoading" class="result-body">
             <el-empty v-if="!searchLoading && !results.length" description="暂无检索结果" />
             <div v-else class="result-list">
+              <el-alert
+                v-if="resultMeta.searchType === 'image'"
+                style="margin-bottom: 12px"
+                type="info"
+                :closable="false"
+                show-icon
+              >
+                <template #title>
+                  以图搜索结果（共 {{ resultMeta.total }} 条）
+                </template>
+                <template #default>
+                  结果包含「以图搜文」（图像语义匹配的文字内容）和「以图搜图」（相似图片内容）两类。
+                  当前数据集中图片资产较少，主要结果来自以图搜文。
+                </template>
+              </el-alert>
               <el-card
                 v-for="item in results"
                 :key="item.id"
@@ -612,7 +627,7 @@ const handleImageUrlSearch = async () => {
         topK: imageForm.topK,
         targetModalities: imageForm.targetModalities
       }),
-    'image-url'
+    'image'
   )
 }
 
@@ -628,7 +643,7 @@ const handleImageBase64Search = async () => {
         topK: imageForm.topK,
         targetModalities: imageForm.targetModalities
       }),
-    'image-base64'
+    'image'
   )
 }
 
@@ -643,7 +658,7 @@ const handleImageUpload = async (options: UploadRequestOptions) => {
   searchLoading.value = true
   try {
     const result = await searchByImageUpload(formData)
-    applySearchResult(result, 'image-upload')
+    applySearchResult(result, 'image')
     options.onSuccess?.(result)
   } catch (error) {
     ElMessage.error('图片上传检索失败')
