@@ -108,6 +108,10 @@
 
               <div v-if="message.content" class="ai-content" v-html="renderMarkdown(message.content)" />
               <span v-if="message.isStreaming && !message.isThinking" class="typing-cursor">▊</span>
+              <div v-if="message.isCancelled" class="cancelled-hint">
+                <el-icon><VideoPause /></el-icon>
+                已停止生成
+              </div>
             </div>
           </div>
         </template>
@@ -143,9 +147,19 @@
             @keydown.ctrl.enter.prevent="handleSend"
           />
           <el-button
+            v-if="isResponding"
+            circle
+            size="default"
+            class="stop-btn"
+            @click="handleStop"
+          >
+            <el-icon><VideoPause /></el-icon>
+          </el-button>
+          <el-button
+            v-else
             type="primary"
             :loading="creating"
-            :disabled="!inputText.trim()"
+            :disabled="!inputText.trim() && !attachedFile"
             class="send-btn"
             @click="handleSend"
           >
@@ -214,11 +228,12 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatLineRound, Delete, Edit, InfoFilled, Loading, Monitor, Paperclip, Plus, Promotion, User, View } from '@element-plus/icons-vue'
+import { ChatLineRound, Delete, Edit, InfoFilled, Loading, Monitor, Paperclip, Plus, Promotion, User, VideoPause, View } from '@element-plus/icons-vue'
 import {
+  cancelTask,
   createAnalysisTask,
   createTaskWithFile,
   deleteSession as deleteSessionApi,
@@ -286,6 +301,7 @@ interface ChatMessage {
   thinkingContent: string
   isStreaming?: boolean
   isThinking?: boolean
+  isCancelled?: boolean
   logs?: LogLine[]
   taskId?: string
   status?: string
@@ -333,6 +349,9 @@ const sessionMenu = ref<{
   y: 0,
   session: null
 })
+const isResponding = computed(() =>
+  messages.value.some(message => message.role === 'ai' && message.isStreaming)
+)
 
 const formatTime = (time?: string | null) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
 
@@ -633,6 +652,20 @@ const connectSseToMessage = (taskId: string, aiMsgId: string) => {
     void loadHistoryTasks()
   })
 
+  es.addEventListener('task_cancelled', () => {
+    const msg = getMsg()
+    if (msg) {
+      msg.isStreaming = false
+      msg.isThinking = false
+      msg.isCancelled = true
+      msg.status = 'CANCELLED'
+    }
+    es.close()
+    if (eventSource.value === es) eventSource.value = null
+    void loadTaskDetail(taskId)
+    void loadHistoryTasks()
+  })
+
   es.onerror = () => {
     const msg = getMsg()
     if (msg?.isStreaming) {
@@ -714,19 +747,40 @@ const submitWithFile = async (formData: FormData, text: string, fileName: string
 
 const handleSend = async () => {
   const text = inputText.value.trim()
-  if (!text || creating.value) return
+  if ((!text && !attachedFile.value) || creating.value) return
 
   inputText.value = ''
+  const submitTextValue = text || '请分析附件内容'
   if (attachedFile.value) {
     const file = attachedFile.value
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('inputText', text)
+    formData.append('inputText', submitTextValue)
     if (currentSessionId.value) formData.append('sessionId', currentSessionId.value)
     attachedFile.value = null
-    await submitWithFile(formData, text, file.name)
+    await submitWithFile(formData, submitTextValue, file.name)
   } else {
-    await submitText(text)
+    await submitText(submitTextValue)
+  }
+}
+
+const handleStop = async () => {
+  closeSse()
+  const streamingMsg = messages.value.find(message => message.role === 'ai' && message.isStreaming)
+  if (streamingMsg) {
+    streamingMsg.isStreaming = false
+    streamingMsg.isThinking = false
+    streamingMsg.isCancelled = true
+    streamingMsg.status = 'CANCELLED'
+  }
+
+  const currentTaskId = streamingMsg?.taskId
+  if (currentTaskId) {
+    try {
+      await cancelTask(currentTaskId)
+    } catch {
+      // 前端已停止接收，后端取消失败不影响当前交互状态
+    }
   }
 }
 
@@ -1281,6 +1335,17 @@ onUnmounted(() => {
   animation: blink 1s step-end infinite;
 }
 
+.cancelled-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+  border-top: 1px dashed #e4e7ed;
+}
+
 .input-area {
   padding: 16px 24px 20px;
   background: #ffffff;
@@ -1306,6 +1371,21 @@ onUnmounted(() => {
   width: 48px;
   height: 60px;
   flex-shrink: 0;
+}
+
+.stop-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  color: #ffffff;
+  background: #ff4757;
+  border-color: #ff4757;
+}
+
+.stop-btn:hover {
+  color: #ffffff;
+  background: #ff6b81;
+  border-color: #ff6b81;
 }
 
 .input-hint {
