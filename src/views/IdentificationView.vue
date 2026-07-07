@@ -172,7 +172,11 @@ const normalizeEntity = (item: unknown): EntityOption => {
   const props = (data.properties ?? {}) as Record<string, unknown>
   return {
     id: String(data.id ?? props.id ?? ''),
-    name: String(props.canonicalLabel ?? props.handle ?? props.canonicalName ?? data.name ?? data.id ?? '-')
+    name: String(
+      data.canonicalName ?? data.canonicalLabel ?? data.handle ?? data.displayName ??
+      props.canonicalLabel ?? props.handle ?? props.canonicalName ?? props.displayName ??
+      data.name ?? data.id ?? '-'
+    )
   }
 }
 
