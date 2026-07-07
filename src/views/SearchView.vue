@@ -535,7 +535,8 @@ const normalizeResult = (result: unknown, fallbackType: string): SearchResult =>
     items,
     total: data.total ?? items.length,
     durationMs: data.durationMs ?? 0,
-    searchType: data.searchType ?? fallbackType
+    searchType: data.searchType ?? fallbackType,
+    highlights: data.highlights
   }
 }
 
