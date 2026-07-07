@@ -87,8 +87,11 @@
         </el-card>
 
         <el-card class="result-card" shadow="never">
-          <template #header>分析结果</template>
-          <div v-if="displaySummary" class="result-content" v-html="renderedSummary" />
+          <template #header>
+            <span>分析结果</span>
+            <span v-if="isStreaming" class="typing-cursor">▊</span>
+          </template>
+          <div v-if="displaySummary" class="result-content markdown-result" v-html="renderedSummary" />
           <el-empty v-else-if="currentTask?.status === 'FAILED'" description="任务执行失败" />
           <el-empty v-else description="分析完成后显示结果" />
         </el-card>
@@ -174,9 +177,11 @@ const eventSource = ref<EventSource | null>(null)
 const logContainerRef = ref<HTMLElement | null>(null)
 const runningPercentage = ref(8)
 const progressTimer = ref<number | null>(null)
+const streamingResult = ref('')
+const isStreaming = ref(false)
 
 const shortTaskId = computed(() => currentTask.value?.id.slice(0, 8) || '-')
-const displaySummary = computed(() => currentTask.value?.resultSummary || sessionResultSummary.value)
+const displaySummary = computed(() => streamingResult.value || currentTask.value?.resultSummary || sessionResultSummary.value)
 const renderedSummary = computed(() => renderMarkdown(displaySummary.value || ''))
 const currentUserId = computed(() => authStore.user?.id || '')
 
@@ -296,6 +301,16 @@ const connectSse = (taskId: string) => {
     appendLog('🚀', '分析任务已启动')
   })
 
+  es.addEventListener('token', event => {
+    const data = safeJsonParse((event as MessageEvent).data)
+    const token = String(data.token ?? '')
+    if (!isStreaming.value) {
+      isStreaming.value = true
+      streamingResult.value = ''
+    }
+    streamingResult.value += token
+  })
+
   es.addEventListener('tool_started', event => {
     const data = safeJsonParse((event as MessageEvent).data)
     const stepName = String(data.stepName ?? 'unknown')
@@ -322,6 +337,7 @@ const connectSse = (taskId: string) => {
   es.addEventListener('task_completed', event => {
     const data = safeJsonParse((event as MessageEvent).data)
     const durationMs = Number(data.durationMs ?? 0)
+    isStreaming.value = false
     appendLog('✅', `分析完成，耗时 ${Math.round(durationMs / 1000)}s`)
     es.close()
     eventSource.value = null
@@ -331,6 +347,7 @@ const connectSse = (taskId: string) => {
 
   es.addEventListener('task_failed', event => {
     const data = safeJsonParse((event as MessageEvent).data)
+    isStreaming.value = false
     appendLog('❌', `分析失败：${String(data.error ?? '未知错误')}`)
     es.close()
     eventSource.value = null
@@ -362,6 +379,8 @@ const handleStartAnalysis = async () => {
   closeSse()
   logs.value = []
   sessionResultSummary.value = ''
+  streamingResult.value = ''
+  isStreaming.value = false
   creating.value = true
   try {
     const payload: CreateTaskRequest = {
@@ -392,6 +411,8 @@ const selectSession = async (session: Session) => {
   currentSessionId.value = session.id
   currentTask.value = null
   sessionResultSummary.value = ''
+  streamingResult.value = ''
+  isStreaming.value = false
 
   try {
     const messages = normalizeMessageResult(await getSessionMessages(session.id))
@@ -556,6 +577,20 @@ onUnmounted(() => {
   color: #111827;
 }
 
+.typing-cursor {
+  display: inline-block;
+  margin-left: 4px;
+  font-weight: bold;
+  color: #409eff;
+  animation: blink 1s step-end infinite;
+}
+
+.markdown-result {
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
 .result-content :deep(h3) {
   margin: 16px 0 8px;
   font-size: 18px;
@@ -576,6 +611,16 @@ onUnmounted(() => {
   }
   50% {
     opacity: 0.55;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
   }
 }
 
