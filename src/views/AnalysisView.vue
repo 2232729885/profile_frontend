@@ -565,11 +565,20 @@ const renderMarkdown = (markdown: string): string => {
   // 7. 段落和换行（标题/列表/hr 之外的行）
   const lines = content.split('\n')
   const result: string[] = []
+  let consecutiveEmpty = 0
+
   for (const line of lines) {
     const trimmed = line.trim()
     if (!trimmed) {
-      result.push('<br />')
-    } else if (
+      consecutiveEmpty++
+      if (consecutiveEmpty === 1) {
+        result.push('<br />')
+      }
+      continue
+    }
+    consecutiveEmpty = 0
+
+    if (
       trimmed.startsWith('<h') ||
       trimmed.startsWith('<ul>') ||
       trimmed.startsWith('<ol>') ||
@@ -696,13 +705,24 @@ const applyRawAssistantContent = (msg: ChatMessage, raw: string) => {
 }
 
 const findReportStart = (raw: string): number => {
-  // 找 ```markdown 的位置
   const markdownBlock = raw.search(/```(?:markdown)?/i)
   if (markdownBlock > 0) return markdownBlock
 
-  // 找独立 ## 标题行的位置（行首，前面有换行）
-  const headingMatch = raw.match(/\n(#{1,3} [^\n]+)/)
-  if (headingMatch && headingMatch.index !== undefined) return headingMatch.index
+  const h2Match = raw.match(/\n(#{1,3} [^\n]+)/)
+  if (h2Match?.index !== undefined && h2Match.index > 0) return h2Match.index
+
+  const reportKeywords = /\n(#+\s*)?[^\n]*(分析结论|分析报告|总结|综合分析|结论|行动建议|操控手法|账号识别)/
+  const keywordMatch = raw.match(reportKeywords)
+  if (keywordMatch?.index !== undefined && keywordMatch.index > 50) return keywordMatch.index
+
+  const thinkingPattern = /^(好的[，,]|首先[，,]|接下来|需要注意|综上所述|由于|考虑到)/
+  if (thinkingPattern.test(raw.trim()) && raw.length > 200) {
+    const hrMatch = raw.match(/\n---+\n/)
+    if (hrMatch?.index !== undefined) return hrMatch.index
+
+    const structMatch = raw.match(/\n(\*\*[^*]+\*\*[\s\S]{0,10}\n|\d+\.\s+\*\*|\#{1,4}\s)/)
+    if (structMatch?.index !== undefined && structMatch.index > 100) return structMatch.index
+  }
 
   return -1
 }
