@@ -12,8 +12,8 @@
       <el-form label-position="top">
         <el-form-item label="触发方式">
           <el-radio-group v-model="triggerType" @change="resetSelection">
-            <el-radio label="narrative">按叙事触发</el-radio>
-            <el-radio label="account">按账号触发</el-radio>
+            <el-radio value="narrative">按叙事触发</el-radio>
+            <el-radio value="account">按账号触发</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -35,7 +35,7 @@
             </el-select>
           </el-form-item>
           <div v-if="selectedNarrativeId" class="selected-id">叙事 ID：{{ selectedNarrativeId }}</div>
-          <el-button type="primary" :loading="triggering" :disabled="!selectedNarrativeId" @click="triggerNarrativeIdentification">
+          <el-button type="primary" :loading="triggering" :disabled="!selectedNarrativeId || triggering" @click="triggerNarrativeIdentification">
             触发识别
           </el-button>
         </template>
@@ -57,7 +57,7 @@
               />
             </el-select>
           </el-form-item>
-          <el-button type="primary" :loading="triggering" :disabled="!selectedAccountIds.length" @click="triggerAccountAnalysis">
+          <el-button type="primary" :loading="triggering" :disabled="!selectedAccountIds.length || triggering" @click="triggerAccountAnalysis">
             触发识别
           </el-button>
         </template>
@@ -263,7 +263,7 @@ const startPolling = (taskId: string) => {
 }
 
 const triggerNarrativeIdentification = async () => {
-  if (!selectedNarrativeId.value) return
+  if (!selectedNarrativeId.value || triggering.value) return
   clearPoll()
   triggering.value = true
   try {
@@ -280,7 +280,7 @@ const triggerNarrativeIdentification = async () => {
 }
 
 const triggerAccountAnalysis = async () => {
-  if (!selectedAccountIds.value.length) return
+  if (!selectedAccountIds.value.length || triggering.value) return
   triggering.value = true
   try {
     const accountNames = selectedAccountIds.value.join(', ')
