@@ -59,7 +59,17 @@
           <template #header>
             <div class="table-header">
               <span>原始记录列表</span>
-              <el-button link type="primary" :loading="rawLoading" @click="loadRawRecords">刷新</el-button>
+              <div>
+                <el-button
+                  type="warning"
+                  plain
+                  :loading="retryStuckLoading"
+                  @click="handleRetryStuck"
+                >
+                  重试卡住的记录
+                </el-button>
+                <el-button link type="primary" :loading="rawLoading" @click="loadRawRecords">刷新</el-button>
+              </div>
             </div>
           </template>
 
@@ -123,9 +133,18 @@
             <el-table-column label="采集时间" min-width="180">
               <template #default="{ row }: { row: RawRecord }">{{ formatTime(row.collectedAt) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }: { row: RawRecord }">
                 <el-button link type="primary" @click="openRawDetail(row.id)">查看详情</el-button>
+                <el-button
+                  v-if="isStuckPipelineStatus(row.pipelineStatus)"
+                  link
+                  type="warning"
+                  :loading="retryingIds.has(row.id)"
+                  @click="handleRetryOne(row.id)"
+                >
+                  重试
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -546,6 +565,7 @@ import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { getCollectionTasks, getPipelineStats, getRawRecord, listRawRecords, uploadFile } from '@/api/ingestion'
+import { retryPipelineTask, retryStuckPipelineTasks } from '@/api/jobs'
 
 interface BatchImportTask {
   id: string
@@ -872,6 +892,42 @@ const resetRawFilters = async () => {
   rawFilters.platform = ''
   rawPage.value = 1
   await loadRawRecords()
+}
+
+// 流水线卡在这几个状态说明还没走到终态（T4_INDEXED是流水线类型的成功终态，
+// NORMALIZED是非流水线类型的终态），可能是任务失败、也可能是还在处理中——
+// 后端的重试接口是幂等的（跳过已经成功的步骤只补跑剩下的），点了不会有副作用
+const isStuckPipelineStatus = (status?: string) => {
+  if (!status) return false
+  return !['NORMALIZED', 'T4_INDEXED'].includes(status)
+}
+
+const retryingIds = ref(new Set<string>())
+const retryStuckLoading = ref(false)
+
+const handleRetryOne = async (rawRecordId: string) => {
+  retryingIds.value.add(rawRecordId)
+  try {
+    await retryPipelineTask(rawRecordId)
+    ElMessage.success('已重新提交，稍后刷新查看结果')
+  } catch {
+    ElMessage.error('重试提交失败')
+  } finally {
+    retryingIds.value.delete(rawRecordId)
+  }
+}
+
+const handleRetryStuck = async () => {
+  retryStuckLoading.value = true
+  try {
+    const message = (await retryStuckPipelineTasks()) as unknown as string
+    ElMessage.success(message || '已重新提交卡住的记录')
+    await loadRawRecords()
+  } catch {
+    ElMessage.error('批量重试提交失败')
+  } finally {
+    retryStuckLoading.value = false
+  }
 }
 
 const openRawDetail = async (id: string) => {

@@ -11,3 +11,9 @@ export const triggerContentPropagation = () =>
 
 export const triggerProfileGeneration = () =>
   request.post('/api/jobs/profile-generation/trigger')
+
+export const retryPipelineTask = (rawRecordId: string) =>
+  request.post(`/api/jobs/pipeline/retry/${rawRecordId}`)
+
+export const retryStuckPipelineTasks = () =>
+  request.post('/api/jobs/pipeline/retry-stuck')
