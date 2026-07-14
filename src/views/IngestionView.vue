@@ -221,79 +221,78 @@
           <el-tabs v-model="rawDetailTab" class="detail-tabs">
             <el-tab-pane label="T1 标注结果" name="t1">
               <template v-if="rawDetail.t1Output">
-                <div class="detail-section-title">基础标注</div>
+                <div class="detail-section-title">AIGC 检测</div>
                 <el-descriptions :column="2" border size="small" class="summary-descriptions">
-                  <el-descriptions-item label="议题归属（维度9）">
-                    <el-tag
-                      v-for="t in (t1Parsed.annotations?.topics ?? [])"
-                      :key="t"
-                      size="small"
-                      style="margin-right: 4px"
-                    >
-                      {{ t }}
-                    </el-tag>
-                    <span v-if="!t1Parsed.annotations?.topics?.length">-</span>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="事件类型（维度9）">
-                    {{ t1Parsed.annotations?.eventType || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="内容目的（维度7）">
-                    {{ t1Parsed.annotations?.contentPurpose || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="AIGC 嫌疑（维度8）">
-                    <el-tag :type="aigcTagType(t1Parsed.annotations?.aigcSuspicion)" size="small">
-                      {{ t1Parsed.annotations?.aigcSuspicion || '-' }}
+                  <el-descriptions-item label="整体判断">
+                    <el-tag :type="aigcTagType(t1Parsed.aigcDetection?.overallAigcLabel)" size="small">
+                      {{ t1Parsed.aigcDetection?.overallAigcLabel || '-' }}
                     </el-tag>
                   </el-descriptions-item>
-                  <el-descriptions-item label="摘要" :span="2">
-                    {{ t1Parsed.annotations?.summary || '-' }}
+                  <el-descriptions-item label="整体分值">
+                    {{ t1Parsed.aigcDetection?.overallAigcScore ?? '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item label="关键词" :span="2">
-                    <el-tag
-                      v-for="k in (t1Parsed.annotations?.keywords ?? [])"
-                      :key="k"
-                      size="small"
-                      type="info"
-                      style="margin-right: 4px"
-                    >
-                      {{ k }}
-                    </el-tag>
-                    <span v-if="!t1Parsed.annotations?.keywords?.length">-</span>
+                  <el-descriptions-item label="文本" >
+                    {{ t1Parsed.aigcDetection?.textAigcDetection?.textAigcLabel || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="图片">
+                    {{ t1Parsed.aigcDetection?.imageAigcDetection?.imageAigcLabel || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="视频">
+                    {{ t1Parsed.aigcDetection?.videoAigcDetection?.videoAigcLabel || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="多模态一致性">
+                    {{ t1Parsed.aigcDetection?.multimodalAigcDetection?.multimodalAigcLabel || '-' }}
                   </el-descriptions-item>
                 </el-descriptions>
 
-                <div class="detail-section-title" style="margin-top: 12px">观点情绪（维度3）</div>
-                <el-descriptions :column="3" border size="small">
-                  <el-descriptions-item label="情感极性">
-                    <el-tag :type="sentimentTagType(t1Parsed.annotations?.sentiment?.label)" size="small">
-                      {{ t1Parsed.annotations?.sentiment?.label || '-' }}
-                    </el-tag>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="情感分值">
-                    {{ t1Parsed.annotations?.sentiment?.score ?? '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="情绪强度">
-                    {{ t1Parsed.annotations?.sentiment?.emotionIntensity || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="主要情绪">
-                    {{ t1Parsed.annotations?.sentiment?.primaryEmotion || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="情绪极性">
-                    {{ t1Parsed.annotations?.sentiment?.emotionPolarity || '-' }}
-                  </el-descriptions-item>
-                </el-descriptions>
-
-                <div class="detail-section-title" style="margin-top: 12px">语言风格（维度6）</div>
+                <div class="detail-section-title" style="margin-top: 12px">高价值主观维度</div>
                 <el-descriptions :column="2" border size="small">
-                  <el-descriptions-item label="正式程度">
-                    {{ t1Parsed.annotations?.languageStyle?.formality || '-' }}
+                  <el-descriptions-item label="意识形态">
+                    <span v-if="t1HighValueSubjective?.ideology">
+                      <el-tag size="small" type="danger">{{ t1HighValueSubjective.ideology.ideologyLabel }}</el-tag>
+                      &nbsp;置信度：{{ t1HighValueSubjective.ideology.ideologyConfidence ?? '-' }}
+                    </span>
+                    <span v-else>-</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="核心立场">
+                    <el-tag :type="stanceTagType(t1HighValueSubjective?.coreStance?.stanceLabel)" size="small">
+                      {{ t1HighValueSubjective?.coreStance?.stanceLabel || '-' }}
+                    </el-tag>
+                    <span v-if="t1HighValueSubjective?.coreStance?.stanceStrength">
+                      &nbsp;（{{ t1HighValueSubjective.coreStance.stanceStrength }}）
+                    </span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="立场指向对象" :span="2">
+                    <span v-if="t1HighValueSubjective?.coreStance?.stanceTarget?.targetText">
+                      <el-tag size="small" type="info" plain>
+                        {{ t1HighValueSubjective.coreStance.stanceTarget.targetType }}
+                      </el-tag>
+                      &nbsp;{{ t1HighValueSubjective.coreStance.stanceTarget.targetText }}
+                    </span>
+                    <span v-else>-</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="情感极性">
+                    <el-tag :type="sentimentTagType(t1HighValueSubjective?.opinionEmotion?.sentimentPolarity)" size="small">
+                      {{ t1HighValueSubjective?.opinionEmotion?.sentimentPolarity || '-' }}
+                    </el-tag>
                   </el-descriptions-item>
                   <el-descriptions-item label="情绪强度">
-                    {{ t1Parsed.annotations?.languageStyle?.emotionalIntensity || '-' }}
+                    {{ t1HighValueSubjective?.opinionEmotion?.emotionIntensity || '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item label="风格标签" :span="2">
+                  <el-descriptions-item label="具体情绪" :span="2">
                     <el-tag
-                      v-for="s in (t1Parsed.annotations?.languageStyle?.styleTags ?? [])"
+                      v-for="e in (t1HighValueSubjective?.opinionEmotion?.emotionLabels ?? [])"
+                      :key="e"
+                      size="small"
+                      style="margin-right: 4px"
+                    >
+                      {{ e }}
+                    </el-tag>
+                    <span v-if="!t1HighValueSubjective?.opinionEmotion?.emotionLabels?.length">-</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="语言风格" :span="2">
+                    <el-tag
+                      v-for="s in (t1HighValueSubjective?.languageStyle?.styleLabels ?? [])"
                       :key="s"
                       size="small"
                       type="warning"
@@ -301,92 +300,113 @@
                     >
                       {{ s }}
                     </el-tag>
-                    <span v-if="!t1Parsed.annotations?.languageStyle?.styleTags?.length">-</span>
+                    <span v-if="!t1HighValueSubjective?.languageStyle?.styleLabels?.length">-</span>
                   </el-descriptions-item>
-                </el-descriptions>
-
-                <div class="detail-section-title" style="margin-top: 12px">扩展标注维度</div>
-                <el-descriptions :column="2" border size="small">
-                  <el-descriptions-item label="意识形态（维度1）">
-                    <span v-if="t1Parsed.annotations?.ideology">
-                      <el-tag size="small" type="danger">{{ t1Parsed.annotations.ideology.label }}</el-tag>
-                      &nbsp;强度：{{ t1Parsed.annotations.ideology.intensity }}
+                  <el-descriptions-item label="BEND操纵手法" :span="2">
+                    <span v-if="t1HighValueSubjective?.manipulationMethod?.methodLabels?.length">
+                      <el-tag
+                        v-for="m in t1HighValueSubjective.manipulationMethod.methodLabels"
+                        :key="m"
+                        size="small"
+                        type="danger"
+                        plain
+                        style="margin-right: 4px"
+                      >
+                        {{ m }}
+                      </el-tag>
+                      &nbsp;置信度：{{ t1HighValueSubjective.manipulationMethod.manipulationMethodConfidence ?? '-' }}
                     </span>
                     <span v-else>-</span>
                   </el-descriptions-item>
-                  <el-descriptions-item label="内容级核心立场（维度2）">
-                    <el-tag :type="stanceTagType(t1Parsed.annotations?.overallStance)" size="small">
-                      {{ t1Parsed.annotations?.overallStance || '-' }}
+                  <el-descriptions-item label="风险等级">
+                    <el-tag :type="riskTagType(t1HighValueSubjective?.riskLevel?.riskLabel)" size="small">
+                      {{ t1HighValueSubjective?.riskLevel?.riskLabel || '-' }}
                     </el-tag>
                   </el-descriptions-item>
-                  <el-descriptions-item label="事件热度（维度4）">
-                    <el-tag :type="heatTagType(t1Parsed.annotations?.eventHeat)" size="small">
-                      {{ t1Parsed.annotations?.eventHeat || '-' }}
+                  <el-descriptions-item label="风险类型">
+                    <el-tag
+                      v-for="rt in (t1HighValueSubjective?.riskLevel?.riskTypes ?? [])"
+                      :key="rt"
+                      size="small"
+                      type="warning"
+                      plain
+                      style="margin-right: 4px"
+                    >
+                      {{ rt }}
                     </el-tag>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="账户类别（维度5）">
-                    {{ t1Parsed.annotations?.accountTypeHint || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="综合风险（维度8）" :span="2">
-                    <span v-if="t1Parsed.annotations?.risk">
-                      <el-tag :type="riskTagType(t1Parsed.annotations.risk.level)" size="small">
-                        {{ t1Parsed.annotations.risk.level }}
-                      </el-tag>
-                      <span v-if="t1Parsed.annotations.risk.types?.length" style="margin-left: 8px">
-                        <el-tag
-                          v-for="rt in t1Parsed.annotations.risk.types"
-                          :key="rt"
-                          size="small"
-                          type="warning"
-                          plain
-                          style="margin-right: 4px"
-                        >
-                          {{ rt }}
-                        </el-tag>
-                      </span>
-                    </span>
-                    <span v-else>
-                      {{ t1Parsed.annotations?.aigcSuspicion ? `AIGC: ${t1Parsed.annotations.aigcSuspicion}` : '-' }}
-                    </span>
+                    <span v-if="!t1HighValueSubjective?.riskLevel?.riskTypes?.length">-</span>
                   </el-descriptions-item>
                 </el-descriptions>
 
-                <template v-if="t1Parsed.annotations?.bendTactics?.length">
-                  <div class="detail-section-title" style="margin-top: 12px">BEND 叙事操纵手法（维度10）</div>
-                  <el-table :data="t1Parsed.annotations.bendTactics" border size="small">
-                    <el-table-column prop="tactic" label="手法" width="120" />
-                    <el-table-column prop="confidence" label="置信度" width="100" align="right" />
-                    <el-table-column prop="evidence" label="证据" min-width="180" show-overflow-tooltip />
-                    <el-table-column prop="reason" label="判定理由" min-width="180" show-overflow-tooltip />
-                  </el-table>
-                </template>
+                <div class="detail-section-title" style="margin-top: 12px">基础客观维度</div>
+                <el-descriptions :column="2" border size="small">
+                  <el-descriptions-item label="话题领域">
+                    {{ t1BasicObjective?.topicTags?.primaryDomain || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="话题类型">
+                    {{ t1BasicObjective?.topicType?.topicTypeLabel || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="摘要" :span="2">
+                    {{ t1BasicObjective?.summary?.summaryText || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="关键词" :span="2">
+                    <el-tag
+                      v-for="k in (t1BasicObjective?.keywords ?? [])"
+                      :key="k.keywordText"
+                      size="small"
+                      type="info"
+                      style="margin-right: 4px"
+                    >
+                      {{ k.keywordText }}
+                    </el-tag>
+                    <span v-if="!t1BasicObjective?.keywords?.length">-</span>
+                  </el-descriptions-item>
+                </el-descriptions>
 
-                <template v-if="t1Parsed.annotations?.entitiesHint?.length">
-                  <div class="detail-section-title" style="margin-top: 12px">实体提示</div>
-                  <el-table :data="t1Parsed.annotations.entitiesHint" border size="small">
-                    <el-table-column prop="text" label="文本" min-width="120" show-overflow-tooltip />
-                    <el-table-column prop="typeHint" label="类型" width="120" />
-                    <el-table-column prop="stance" label="立场" width="100" />
-                    <el-table-column prop="emotionExpression" label="情绪表达" width="120" />
-                    <el-table-column prop="emotionIntensity" label="情绪强度" width="100" />
+                <template v-if="t1BasicObjective?.entitiesHint?.length">
+                  <div class="detail-section-title" style="margin-top: 12px">实体线索</div>
+                  <el-table :data="t1BasicObjective.entitiesHint" border size="small">
+                    <el-table-column prop="text" label="文本" min-width="140" show-overflow-tooltip />
+                    <el-table-column prop="typeHint" label="类型" width="140" />
+                    <el-table-column prop="entityHintConfidence" label="置信度" width="100" align="right" />
                   </el-table>
                 </template>
 
                 <div class="detail-section-title" style="margin-top: 12px">质量控制</div>
                 <el-descriptions :column="2" border size="small">
-                  <el-descriptions-item label="标注状态">
-                    {{ t1Parsed.qualityControl?.autoLabelStatus || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="模型版本">
-                    {{ t1Parsed.qualityControl?.modelVersion || '-' }}
-                  </el-descriptions-item>
                   <el-descriptions-item label="需人工审核">
                     <el-tag :type="t1Parsed.qualityControl?.needHumanReview ? 'danger' : 'success'" size="small">
                       {{ t1Parsed.qualityControl?.needHumanReview ? '是' : '否' }}
                     </el-tag>
                   </el-descriptions-item>
                   <el-descriptions-item label="整体置信度">
-                    {{ t1Parsed.confidence ?? '-' }}
+                    {{ t1Parsed.overallConfidence ?? '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="复核原因" :span="2">
+                    <el-tag
+                      v-for="r in (t1Parsed.qualityControl?.reviewReasons ?? [])"
+                      :key="r"
+                      size="small"
+                      type="danger"
+                      plain
+                      style="margin-right: 4px"
+                    >
+                      {{ r }}
+                    </el-tag>
+                    <span v-if="!t1Parsed.qualityControl?.reviewReasons?.length">-</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="失败模块" :span="2">
+                    <el-tag
+                      v-for="f in (t1Parsed.qualityControl?.failedModules ?? [])"
+                      :key="f"
+                      size="small"
+                      type="warning"
+                      plain
+                      style="margin-right: 4px"
+                    >
+                      {{ f }}
+                    </el-tag>
+                    <span v-if="!t1Parsed.qualityControl?.failedModules?.length">-</span>
                   </el-descriptions-item>
                 </el-descriptions>
 
@@ -404,27 +424,41 @@
                 <template v-if="!t2Parsed.parseFailed">
                   <h3 class="detail-section-title">实体列表</h3>
                   <el-table :data="t2Parsed.entities" border size="small">
-                    <el-table-column prop="type" label="type" width="140" />
+                    <el-table-column prop="type" label="type" width="120" />
                     <el-table-column prop="canonicalName" label="canonicalName" min-width="180" show-overflow-tooltip />
-                    <el-table-column prop="importanceScore" label="importanceScore" width="150" align="right" />
+                    <el-table-column label="认知领域类别" min-width="180">
+                      <template #default="{ row }">
+                        <el-tag
+                          v-for="c in (row.attributes?.personCategories ?? row.attributes?.organizationCategories ?? [])"
+                          :key="c"
+                          size="small"
+                          type="info"
+                          style="margin-right: 4px"
+                        >
+                          {{ c }}
+                        </el-tag>
+                        <span
+                          v-if="
+                            !row.attributes?.personCategories?.length &&
+                            !row.attributes?.organizationCategories?.length
+                          "
+                        >
+                          -
+                        </span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="importanceScore" label="importanceScore" width="130" align="right" />
+                    <el-table-column prop="confidence" label="confidence" width="110" align="right" />
                   </el-table>
 
                   <h3 class="detail-section-title">关系列表</h3>
-                  <el-table :data="t2Parsed.relations" border size="small">
-                    <el-table-column prop="sourceName" label="sourceName" min-width="150" show-overflow-tooltip />
-                    <el-table-column prop="relationType" label="relationType" min-width="150" show-overflow-tooltip />
-                    <el-table-column prop="targetName" label="targetName" min-width="150" show-overflow-tooltip />
-                    <el-table-column prop="confidence" label="confidence" width="120" align="right" />
+                  <el-table :data="t2RelationsWithNames" border size="small">
+                    <el-table-column prop="subjectName" label="主体" min-width="150" show-overflow-tooltip />
+                    <el-table-column prop="predicate" label="关系类型" min-width="150" show-overflow-tooltip />
+                    <el-table-column prop="objectName" label="客体" min-width="150" show-overflow-tooltip />
+                    <el-table-column prop="confidence" label="confidence" width="110" align="right" />
+                    <el-table-column prop="evidence" label="证据" min-width="180" show-overflow-tooltip />
                   </el-table>
-
-                  <template v-if="t2Parsed.events?.length">
-                    <div class="detail-section-title">事件列表</div>
-                    <el-table :data="t2Parsed.events" border size="small">
-                      <el-table-column prop="eventType" label="eventType" width="120" />
-                      <el-table-column prop="canonicalName" label="canonicalName" min-width="180" show-overflow-tooltip />
-                      <el-table-column prop="confidence" label="confidence" width="120" align="right" />
-                    </el-table>
-                  </template>
 
                   <el-collapse class="json-collapse">
                     <el-collapse-item title="查看完整 JSON" name="t2-json">
@@ -445,23 +479,22 @@
                   </el-collapse-item>
                 </el-collapse>
               </template>
-              <el-empty v-else description="暂无 T3 融合结果（T3 已移至后台定时任务处理）" />
+              <el-empty
+                v-else
+                description="暂无 T3 融合结果（T3 是嵌在 T2 抽取步骤内部同步调用的，判断结果直接写入 Neo4j/entity_fusion_records，不落这个字段）"
+              />
             </el-tab-pane>
 
             <el-tab-pane label="T4 索引结果" name="t4">
               <template v-if="rawDetail.t4Output">
                 <el-descriptions :column="2" border size="small" class="summary-descriptions">
-                  <el-descriptions-item label="向量化状态">
-                    {{ t4Parsed.embeddingStatus || '-' }}
+                  <el-descriptions-item label="文本向量ID" :span="2">
+                    <el-text truncated>{{ t4Parsed.textVectorId || '-' }}</el-text>
                   </el-descriptions-item>
-                  <el-descriptions-item label="向量维度">
-                    {{ t4Parsed.embeddingDim || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="模型版本">
-                    {{ t4Parsed.modelVersion || '-' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="耗时(ms)">
-                    {{ t4Parsed.durationMs || '-' }}
+                  <el-descriptions-item label="是否跳过文本向量化">
+                    <el-tag :type="t4Parsed.textEmbeddingSkipped ? 'info' : 'success'" size="small">
+                      {{ t4Parsed.textEmbeddingSkipped ? '是' : '否' }}
+                    </el-tag>
                   </el-descriptions-item>
                 </el-descriptions>
                 <el-collapse>
@@ -662,11 +695,18 @@ const t1Parsed = computed<Record<string, any>>(() => {
   }
 })
 
+const t1HighValueSubjective = computed<Record<string, any> | undefined>(
+  () => t1Parsed.value.annotations?.highValueSubjective
+)
+const t1BasicObjective = computed<Record<string, any> | undefined>(
+  () => t1Parsed.value.annotations?.basicObjective
+)
+
 const aigcTagType = (val?: string) => {
-  if (val === 'none') return 'success'
-  if (val === 'low') return 'info'
-  if (val === 'medium') return 'warning'
-  if (val === 'high') return 'danger'
+  if (val === 'human_generated') return 'success'
+  if (val === 'unclear' || val === 'not_applicable') return 'info'
+  if (val === 'mixed' || val === 'suspicious') return 'warning'
+  if (val === 'ai_generated') return 'danger'
   return 'info'
 }
 
@@ -683,33 +723,45 @@ const stanceTagType = (val?: string) => {
   return 'info'
 }
 
-const heatTagType = (val?: string) => {
-  if (val === 'breaking') return 'danger'
-  if (val === 'high') return 'warning'
-  if (val === 'medium') return 'primary'
-  return 'info'
-}
-
 const riskTagType = (val?: string) => {
-  if (val === 'high') return 'danger'
+  if (val === 'high' || val === 'severe') return 'danger'
   if (val === 'medium') return 'warning'
-  return 'success'
+  if (val === 'none') return 'success'
+  return 'info'
 }
 
 const t2Parsed = computed(() => {
   const raw = rawDetail.value?.t2Output ?? ''
   const parsed = parseJsonValue(raw)
   if (!parsed || typeof parsed !== 'object') {
-    return { parseFailed: Boolean(raw), raw, entities: [], relations: [], events: [] }
+    return { parseFailed: Boolean(raw), raw, entities: [], relations: [] }
   }
-  const data = parsed as { entities?: unknown[]; relationships?: unknown[]; relations?: unknown[]; events?: unknown[] }
+  const data = parsed as { entities?: unknown[]; relationships?: unknown[]; relations?: unknown[] }
   return {
     parseFailed: false,
     raw,
     entities: (data.entities ?? []) as Record<string, unknown>[],
-    relations: (data.relationships ?? data.relations ?? []) as Record<string, unknown>[],
-    events: (data.events ?? []) as Record<string, unknown>[]
+    relations: (data.relationships ?? data.relations ?? []) as Record<string, unknown>[]
   }
+})
+
+// T2 的关系原始数据只带 subjectMentionId/objectMentionId，不直接带名字，
+// 这里按 mentionId 去实体列表里查一次名字，方便在表格里直接看懂"谁和谁"，
+// 不是 T2 真实返回了 subjectName/objectName 这两个字段
+const t2RelationsWithNames = computed(() => {
+  const entityByMentionId = new Map<string, string>()
+  for (const entity of t2Parsed.value.entities) {
+    const mentionId = entity.mentionId as string | undefined
+    const name = (entity.canonicalName ?? entity.name) as string | undefined
+    if (mentionId && name) {
+      entityByMentionId.set(mentionId, name)
+    }
+  }
+  return t2Parsed.value.relations.map((rel) => ({
+    ...rel,
+    subjectName: entityByMentionId.get(rel.subjectMentionId as string) ?? (rel.subjectMentionId as string) ?? '-',
+    objectName: entityByMentionId.get(rel.objectMentionId as string) ?? (rel.objectMentionId as string) ?? '-'
+  }))
 })
 
 const t4Parsed = computed<Record<string, any>>(() => {
