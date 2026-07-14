@@ -473,7 +473,22 @@
 
             <el-tab-pane label="T3 融合结果" name="t3">
               <template v-if="rawDetail.t3Output">
-                <el-collapse>
+                <div class="detail-section-title">消歧判断结果</div>
+                <el-table :data="t3Parsed.results" border size="small">
+                  <el-table-column prop="mentionId" label="mentionId" width="90" />
+                  <el-table-column label="action" width="100">
+                    <template #default="{ row }">
+                      <el-tag :type="t3ActionTagType(row.action)" size="small">{{ row.action }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="matchedEntityId" label="matchedEntityId" min-width="160" show-overflow-tooltip />
+                  <el-table-column prop="score" label="score" width="90" align="right" />
+                  <el-table-column prop="confidence" label="confidence" width="100" align="right" />
+                  <el-table-column prop="matchMethod" label="matchMethod" min-width="140" show-overflow-tooltip />
+                  <el-table-column prop="reason" label="reason" min-width="180" show-overflow-tooltip />
+                </el-table>
+
+                <el-collapse class="json-collapse" style="margin-top: 12px">
                   <el-collapse-item title="查看完整 JSON" name="t3-json">
                     <pre class="json-block">{{ formatJsonString(rawDetail.t3Output) }}</pre>
                   </el-collapse-item>
@@ -481,7 +496,7 @@
               </template>
               <el-empty
                 v-else
-                description="暂无 T3 融合结果（T3 是嵌在 T2 抽取步骤内部同步调用的，判断结果直接写入 Neo4j/entity_fusion_records，不落这个字段）"
+                description="暂无 T3 融合结果（这条内容抽取出的实体都没有候选可比对，走的是直接新建，没有调用 T3；如果预期应该有候选却仍为空，可能是 T3 调用失败）"
               />
             </el-tab-pane>
 
@@ -773,6 +788,24 @@ const t4Parsed = computed<Record<string, any>>(() => {
     return {}
   }
 })
+
+const t3Parsed = computed<{ results: Record<string, unknown>[]; modelVersion?: string }>(() => {
+  const raw = rawDetail.value?.t3Output ?? ''
+  if (!raw) return { results: [] }
+  try {
+    const parsed = JSON.parse(raw)
+    return { results: parsed?.results ?? [], modelVersion: parsed?.modelVersion }
+  } catch {
+    return { results: [] }
+  }
+})
+
+const t3ActionTagType = (val?: string) => {
+  if (val === 'MERGE') return 'success'
+  if (val === 'REVIEW') return 'warning'
+  if (val === 'CREATE') return 'info'
+  return 'info'
+}
 
 const rawQueryParams = () => ({
   recordType: rawFilters.recordType || undefined,
