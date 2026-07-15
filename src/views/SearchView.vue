@@ -1115,7 +1115,14 @@ const graphCategories = [
   { name: 'MediaAsset', itemStyle: { color: '#9ca3af' } }
 ]
 
-const labelIndexMap = computed(() => new Map(graphCategories.map((item, index) => [item.name, index])))
+const activeGraphCategories = computed(() => {
+  const presentLabels = new Set(graphData.value.nodes.map(node => node.label))
+  return graphCategories.filter(category => presentLabels.has(category.name))
+})
+
+const activeLabelIndexMap = computed(
+  () => new Map(activeGraphCategories.value.map((item, index) => [item.name, index]))
+)
 const hasGraphData = computed(() => graphData.value.nodes.length > 0)
 
 const getNodeDisplayName = (node: GraphNode) => {
@@ -1130,23 +1137,48 @@ const getNodeDisplayName = (node: GraphNode) => {
   return String(name ?? node.id)
 }
 
+const TOOLTIP_PROPERTY_LABELS: Record<string, string> = {
+  entityType: '实体类型',
+  importanceScore: '重要性',
+  platform: '平台',
+  contentType: '内容类型',
+  publishedAt: '发布时间',
+  accountType: '账号类别',
+  bio: '简介',
+  handle: 'handle',
+  verified: '是否认证'
+}
+
+const buildNodeTooltip = (node: GraphNode): string => {
+  const props = node.properties ?? {}
+  const lines = [`<strong>${node.label}</strong>：${getNodeDisplayName(node)}`]
+  for (const [key, label] of Object.entries(TOOLTIP_PROPERTY_LABELS)) {
+    const value = props[key]
+    if (value !== undefined && value !== null && value !== '') {
+      lines.push(`${label}：${value}`)
+    }
+  }
+  return lines.join('<br/>')
+}
+
 const graphOption = computed(() => {
   if (!hasGraphData.value) return {}
+  const nodeTooltips = new Map(graphData.value.nodes.map(node => [node.id, buildNodeTooltip(node)]))
   return {
     tooltip: {
-      formatter: (params: { dataType?: string; data?: { name?: string; type?: string } }) => {
+      formatter: (params: { dataType?: string; data?: { id?: string; type?: string } }) => {
         if (params.dataType === 'edge') return params.data?.type || ''
-        return params.data?.name || ''
+        return (params.data?.id ? nodeTooltips.get(params.data.id) : null) || ''
       }
     },
-    legend: [{ data: graphCategories.map(item => item.name), bottom: 0 }],
+    legend: [{ data: activeGraphCategories.value.map(item => item.name), bottom: 0 }],
     series: [
       {
         type: 'graph',
         layout: 'force',
         draggable: true,
         roam: true,
-        categories: graphCategories,
+        categories: activeGraphCategories.value,
         force: {
           repulsion: 180,
           edgeLength: 90
@@ -1165,7 +1197,7 @@ const graphOption = computed(() => {
           id: node.id,
           name: getNodeDisplayName(node),
           symbolSize: node.label === 'MediaContent' ? 40 : 24,
-          category: labelIndexMap.value.get(node.label) ?? 0,
+          category: activeLabelIndexMap.value.get(node.label) ?? 0,
           label: { show: true }
         })),
         links: graphData.value.relations.map(relation => ({
