@@ -333,6 +333,20 @@
                     >
                       <el-tag type="warning" effect="plain">相关度 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
                     </el-tooltip>
+                    <el-tooltip
+                      v-if="getSimilarityScore(item.id) !== null"
+                      content="Milvus 向量语义相似度（余弦相似度），越接近1越相似"
+                      placement="top"
+                    >
+                      <el-tag type="success" effect="plain">相似度 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
+                    </el-tooltip>
+                    <el-tooltip
+                      v-if="getFusionScore(item.id) !== null"
+                      content="多路检索融合（RRF）后的综合排序分数，决定了智能融合模式的最终排序，本身没有绝对意义"
+                      placement="top"
+                    >
+                      <el-tag type="primary" effect="plain">融合分 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
+                    </el-tooltip>
                   </div>
                   <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
                 </div>
@@ -524,6 +538,8 @@ interface SearchResult {
   searchType: string
   highlights?: Record<string, Record<string, string[]>>
   scores?: Record<string, number>
+  similarityScores?: Record<string, number>
+  fusionScores?: Record<string, number>
 }
 
 interface MediaContent {
@@ -625,6 +641,8 @@ const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
 const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
 const resultScores = ref<Record<string, number>>({})
+const resultSimilarityScores = ref<Record<string, number>>({})
+const resultFusionScores = ref<Record<string, number>>({})
 const expandedIds = ref<Set<string>>(new Set())
 const entityResults = ref<EntityResult[]>([])
 const graphData = ref<GraphData>({ nodes: [], relations: [] })
@@ -713,7 +731,9 @@ const normalizeResult = (result: unknown, fallbackType: string): SearchResult =>
     durationMs: data.durationMs ?? 0,
     searchType: data.searchType ?? fallbackType,
     highlights: data.highlights,
-    scores: data.scores
+    scores: data.scores,
+    similarityScores: data.similarityScores,
+    fusionScores: data.fusionScores
   }
 }
 
@@ -725,6 +745,8 @@ const applySearchResult = (result: unknown, fallbackType: string) => {
   resultMeta.searchType = normalized.searchType
   resultHighlights.value = normalized.highlights ?? {}
   resultScores.value = normalized.scores ?? {}
+  resultSimilarityScores.value = normalized.similarityScores ?? {}
+  resultFusionScores.value = normalized.fusionScores ?? {}
   expandedIds.value = new Set()
 }
 
@@ -735,6 +757,8 @@ const clearResults = () => {
   resultMeta.searchType = ''
   resultHighlights.value = {}
   resultScores.value = {}
+  resultSimilarityScores.value = {}
+  resultFusionScores.value = {}
   expandedIds.value = new Set()
 }
 
@@ -945,6 +969,16 @@ const getHighlight = (contentId: string): string[] | null => {
 
 const getContentScore = (contentId: string): number | null => {
   const score = resultScores.value[contentId]
+  return score === undefined ? null : score
+}
+
+const getSimilarityScore = (contentId: string): number | null => {
+  const score = resultSimilarityScores.value[contentId]
+  return score === undefined ? null : score
+}
+
+const getFusionScore = (contentId: string): number | null => {
+  const score = resultFusionScores.value[contentId]
   return score === undefined ? null : score
 }
 
