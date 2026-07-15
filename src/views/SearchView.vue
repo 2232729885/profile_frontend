@@ -289,7 +289,7 @@
                 :key="entity.id"
                 class="entity-result-card"
                 shadow="hover"
-                @click="openGraphDialog(entity.label, entity.id)"
+                @click="openGraphDialog(entity.label, entity.id, entity.name)"
               >
                 <el-tag size="small" effect="plain">{{ entity.label }}</el-tag>
                 <div class="entity-result-card__name">{{ entity.name }}</div>
@@ -386,7 +386,7 @@
                   </div>
                   <div>
                     <el-button size="small" :disabled="!item.authorAccountId" @click.stop="goAuthorProfile(item)">查看画像</el-button>
-                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog('MediaContent', item.id)">查看图谱</el-button>
+                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog('MediaContent', item.id, getBodyText(item).slice(0, 20))">查看图谱</el-button>
                   </div>
                 </div>
               </el-card>
@@ -396,12 +396,20 @@
 
     <el-dialog
       v-model="graphDialogVisible"
-      title="内容 2 跳图谱"
+      :title="graphDialogTitle"
       width="900px"
       destroy-on-close
       @opened="handleGraphDialogOpened"
       @closed="graphDialogReady = false"
     >
+      <div class="graph-hops-switcher">
+        <span class="muted-text">默认只显示当前节点，按需展开查看邻近关系：</span>
+        <el-radio-group :model-value="graphCurrentHops" size="small" @change="(val: string | number) => expandGraph(Number(val))">
+          <el-radio-button :value="0">仅本节点</el-radio-button>
+          <el-radio-button :value="1">展开1跳</el-radio-button>
+          <el-radio-button :value="2">展开2跳</el-radio-button>
+        </el-radio-group>
+      </div>
       <div v-loading="graphLoading" class="graph-dialog-body">
         <VChart v-if="graphDialogReady && hasGraphData" class="graph-chart" :option="graphOption" autoresize />
         <el-empty v-else-if="!graphLoading" class="graph-empty" description="暂无图谱数据" />
@@ -1039,13 +1047,42 @@ const imageAssetUrls = (assets: MediaAsset[]): string[] =>
 const hasPropagation = (prop?: ContentPropagation | null): boolean =>
   Boolean(prop && (prop.parent || prop.repostOf || prop.quotedContent))
 
-const openGraphDialog = async (label: string, id: string) => {
+const graphCurrentLabel = ref('')
+const graphCurrentId = ref('')
+const graphCurrentName = ref('')
+const graphCurrentHops = ref(0)
+
+const graphDialogTitle = computed(() => {
+  const labelText = graphCurrentLabel.value || '节点'
+  const nameText = graphCurrentName.value ? `「${graphCurrentName.value}」` : ''
+  const hopsText = graphCurrentHops.value === 0 ? '' : `· ${graphCurrentHops.value}跳邻近关系`
+  return `${labelText}${nameText} ${hopsText}`.trim()
+})
+
+const openGraphDialog = async (label: string, id: string, name?: string) => {
+  graphCurrentLabel.value = label
+  graphCurrentId.value = id
+  graphCurrentName.value = name ?? ''
+  graphCurrentHops.value = 0
   graphDialogReady.value = false
   graphData.value = { nodes: [], relations: [] }
   graphDialogVisible.value = true
+  await fetchGraph(0)
+}
+
+const expandGraph = async (hops: number) => {
+  await fetchGraph(hops)
+}
+
+const fetchGraph = async (hops: number) => {
   graphLoading.value = true
   try {
-    graphData.value = (await searchGraph(label, id)) as unknown as GraphData
+    graphData.value = (await searchGraph(
+      graphCurrentLabel.value,
+      graphCurrentId.value,
+      hops
+    )) as unknown as GraphData
+    graphCurrentHops.value = hops
   } catch {
     ElMessage.error('加载图谱失败')
   } finally {
@@ -1071,7 +1108,6 @@ onUnmounted(() => {
 const graphCategories = [
   { name: 'Person', itemStyle: { color: '#2563eb' } },
   { name: 'SocialAccount', itemStyle: { color: '#0891b2' } },
-  { name: 'Narrative', itemStyle: { color: '#ea580c' } },
   { name: 'Organization', itemStyle: { color: '#7c3aed' } },
   { name: 'Event', itemStyle: { color: '#dc2626' } },
   { name: 'Location', itemStyle: { color: '#16a34a' } },
@@ -1084,7 +1120,14 @@ const hasGraphData = computed(() => graphData.value.nodes.length > 0)
 
 const getNodeDisplayName = (node: GraphNode) => {
   const props = node.properties ?? {}
-  return String(props.canonicalName ?? props.canonicalLabel ?? props.handle ?? props.id ?? node.id)
+  const name =
+    props.canonicalName ??
+    props.canonicalLabel ??
+    props.displayName ??
+    props.handle ??
+    props.title ??
+    props.platformContentId
+  return String(name ?? node.id)
 }
 
 const graphOption = computed(() => {
@@ -1481,6 +1524,13 @@ const graphOption = computed(() => {
   margin: 12px 0;
   font-size: 13px;
   color: #4b5563;
+}
+
+.graph-hops-switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .graph-dialog-body {
