@@ -1,197 +1,247 @@
 ﻿<template>
   <div class="search-view">
     <div class="page-header">
-      <div>
-        <h1>综合检索</h1>
-        <p>按检索对象分类：内容、账号、实体</p>
-      </div>
+      <h1>综合检索</h1>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="7">
-        <el-card class="search-panel" shadow="never">
-          <el-tabs v-model="activeMode" tab-position="top" @tab-change="handleModeChange">
-            <el-tab-pane label="内容" name="content">
-              <div class="mode-switcher">
-                <el-radio-group v-model="contentMode" size="default">
-                  <el-radio-button value="hybrid">智能融合</el-radio-button>
-                  <el-radio-button value="text">关键词</el-radio-button>
-                  <el-radio-button value="semantic">语义</el-radio-button>
-                  <el-radio-button value="image">以图搜索</el-radio-button>
-                </el-radio-group>
-              </div>
+    <div class="scope-switcher">
+      <el-radio-group v-model="activeMode" size="large" @change="handleModeChange">
+        <el-radio-button value="content">内容</el-radio-button>
+        <el-radio-button value="account">账号</el-radio-button>
+        <el-radio-button value="entity">实体</el-radio-button>
+      </el-radio-group>
+    </div>
 
-              <el-form v-if="contentMode === 'text'" label-position="top">
-                <el-form-item label="关键词">
-                  <el-input v-model="textForm.keyword" placeholder="请输入关键词" clearable />
-                </el-form-item>
-                <el-form-item label="平台过滤">
-                  <el-select v-model="textForm.platform" class="full-width" clearable placeholder="全部平台">
-                    <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="语言过滤">
-                  <el-select v-model="textForm.language" class="full-width" clearable placeholder="全部语言">
-                    <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="每页数量">
-                  <el-input-number v-model="textForm.size" :min="1" :max="100" />
-                </el-form-item>
-                <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleTextSearch">搜索</el-button>
-              </el-form>
+    <el-card class="primary-search-card" shadow="never">
+      <div v-if="activeMode === 'content'" class="content-mode-switcher">
+        <el-radio-group v-model="contentMode">
+          <el-radio-button value="hybrid">智能融合</el-radio-button>
+          <el-radio-button value="text">关键词</el-radio-button>
+          <el-radio-button value="semantic">语义</el-radio-button>
+          <el-radio-button value="image">以图搜索</el-radio-button>
+        </el-radio-group>
+      </div>
 
-              <el-form v-else-if="contentMode === 'semantic'" label-position="top">
-                <el-form-item label="查询文本">
-                  <el-input v-model="semanticForm.queryText" type="textarea" :rows="4" placeholder="请输入查询文本" />
-                </el-form-item>
-                <el-form-item label="平台过滤">
-                  <el-select v-model="semanticForm.platform" class="full-width" clearable placeholder="全部平台">
-                    <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="语言过滤">
-                  <el-select v-model="semanticForm.language" class="full-width" clearable placeholder="全部语言">
-                    <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="返回数量 topK">
-                  <el-input-number v-model="semanticForm.topK" :min="1" :max="100" />
-                </el-form-item>
-                <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleSemanticSearch">搜索</el-button>
-              </el-form>
+      <!-- 内容 · 关键词 -->
+      <div v-if="activeMode === 'content' && contentMode === 'text'" class="primary-input-area">
+        <el-input
+          v-model="textForm.keyword"
+          size="large"
+          placeholder="请输入关键词"
+          clearable
+          class="primary-search-input"
+          @keyup.enter="handleTextSearch"
+        >
+          <template #append>
+            <el-button type="primary" :loading="searchLoading" @click="handleTextSearch">搜索</el-button>
+          </template>
+        </el-input>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <div class="options-grid">
+              <el-select v-model="textForm.platform" clearable placeholder="全部平台">
+                <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
+              </el-select>
+              <el-select v-model="textForm.language" clearable placeholder="全部语言">
+                <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
+              </el-select>
+              <el-input-number v-model="textForm.size" :min="1" :max="100" />
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
 
-              <el-form v-else-if="contentMode === 'hybrid'" label-position="top">
-                <el-form-item label="查询文本">
-                  <el-input v-model="hybridForm.queryText" type="textarea" :rows="3" placeholder="请输入查询文本" />
-                </el-form-item>
-                <el-form-item label="图片 URL">
-                  <el-input v-model="hybridForm.imageUrl" placeholder="可选，支持图文混合查询" clearable />
-                </el-form-item>
-                <el-form-item label="返回数量 topK">
-                  <el-input-number v-model="hybridForm.topK" :min="1" :max="100" />
-                </el-form-item>
-                <div class="switch-row">
-                  <el-switch v-model="hybridForm.enableEs" active-text="ES" />
-                  <el-switch v-model="hybridForm.enableMilvus" active-text="Milvus" />
-                  <el-switch v-model="hybridForm.enableNeo4j" active-text="Neo4j" />
-                </div>
-                <el-form-item label="跨模态">
-                  <el-radio-group v-model="hybridForm.targetModalities">
-                    <el-radio label="all">all</el-radio>
-                    <el-radio label="text">text</el-radio>
-                    <el-radio label="image">image</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleHybridSearch">搜索</el-button>
-              </el-form>
+      <!-- 内容 · 语义 -->
+      <div v-else-if="activeMode === 'content' && contentMode === 'semantic'" class="primary-input-area">
+        <el-input
+          v-model="semanticForm.queryText"
+          type="textarea"
+          :rows="3"
+          size="large"
+          placeholder="请输入查询文本，支持自然语言描述"
+          class="primary-search-input"
+        />
+        <el-button
+          type="primary"
+          size="large"
+          class="primary-search-button"
+          :loading="searchLoading"
+          @click="handleSemanticSearch"
+        >
+          搜索
+        </el-button>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <div class="options-grid">
+              <el-select v-model="semanticForm.platform" clearable placeholder="全部平台">
+                <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
+              </el-select>
+              <el-select v-model="semanticForm.language" clearable placeholder="全部语言">
+                <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
+              </el-select>
+              <el-input-number v-model="semanticForm.topK" :min="1" :max="100" />
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
 
-              <el-form v-else label-position="top">
-                <el-form-item label="返回数量 topK">
-                  <el-input-number v-model="imageForm.topK" :min="1" :max="100" />
-                </el-form-item>
-                <el-form-item label="检索范围">
-                  <el-radio-group v-model="imageForm.targetModalities">
-                    <el-radio value="all">全部（以图搜文 + 以图搜图）</el-radio>
-                    <el-radio value="text">仅文字内容（以图搜文）</el-radio>
-                    <el-radio value="image">仅图片内容（以图搜图）</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item label="图片来源">
-                  <el-radio-group v-model="imageInputMode" size="small">
-                    <el-radio-button value="url">URL</el-radio-button>
-                    <el-radio-button value="upload">上传文件</el-radio-button>
-                    <el-radio-button value="base64">Base64</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
+      <!-- 内容 · 智能融合 -->
+      <div v-else-if="activeMode === 'content' && contentMode === 'hybrid'" class="primary-input-area">
+        <el-input
+          v-model="hybridForm.queryText"
+          type="textarea"
+          :rows="3"
+          size="large"
+          placeholder="请输入查询文本，可在下方追加图片做图文混合检索"
+          class="primary-search-input"
+        />
+        <el-button
+          type="primary"
+          size="large"
+          class="primary-search-button"
+          :loading="searchLoading"
+          @click="handleHybridSearch"
+        >
+          搜索
+        </el-button>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <div class="options-grid">
+              <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选，图文混合）" clearable />
+              <el-input-number v-model="hybridForm.topK" :min="1" :max="100" />
+            </div>
+            <div class="switch-row">
+              <el-switch v-model="hybridForm.enableEs" active-text="ES" />
+              <el-switch v-model="hybridForm.enableMilvus" active-text="Milvus" />
+              <el-switch v-model="hybridForm.enableNeo4j" active-text="Neo4j" />
+            </div>
+            <el-radio-group v-model="hybridForm.targetModalities" class="mt-sm">
+              <el-radio label="all">跨模态：all</el-radio>
+              <el-radio label="text">text</el-radio>
+              <el-radio label="image">image</el-radio>
+            </el-radio-group>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
 
-                <template v-if="imageInputMode === 'url'">
-                  <el-form-item label="图片 URL">
-                    <el-input v-model="imageForm.imageUrl" placeholder="请输入图片 URL" clearable />
-                  </el-form-item>
-                  <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageUrlSearch">
-                    搜索
-                  </el-button>
-                </template>
-                <template v-else-if="imageInputMode === 'upload'">
-                  <el-upload
-                    drag
-                    :show-file-list="false"
-                    :http-request="handleImageUpload"
-                    accept="image/*"
-                  >
-                    <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
-                  </el-upload>
-                  <div v-if="uploadedImagePreviewUrl" class="image-preview">
-                    <p class="image-preview__label">已选择图片：</p>
-                    <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
-                  </div>
-                </template>
-                <template v-else>
-                  <el-form-item label="Base64">
-                    <el-input v-model="imageForm.base64" type="textarea" :rows="5" placeholder="粘贴图片 base64" />
-                  </el-form-item>
-                  <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageBase64Search">
-                    搜索
-                  </el-button>
-                </template>
-              </el-form>
-            </el-tab-pane>
+      <!-- 内容 · 以图搜索 -->
+      <div v-else-if="activeMode === 'content' && contentMode === 'image'" class="primary-input-area">
+        <div class="image-source-switcher">
+          <el-radio-group v-model="imageInputMode">
+            <el-radio-button value="url">URL</el-radio-button>
+            <el-radio-button value="upload">上传文件</el-radio-button>
+            <el-radio-button value="base64">Base64</el-radio-button>
+          </el-radio-group>
+        </div>
 
-            <el-tab-pane label="账号" name="account">
-              <el-form label-position="top">
-                <el-form-item label="关键词/语义描述">
-                  <el-input
-                    v-model="accountForm.queryText"
-                    placeholder="账号名称、简介关键词，或一段语义描述"
-                    clearable
-                  />
-                </el-form-item>
-                <el-form-item label="平台过滤">
-                  <el-select v-model="accountForm.platform" class="full-width" clearable placeholder="全部平台">
-                    <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="账号类别过滤">
-                  <el-select v-model="accountForm.accountType" class="full-width" clearable placeholder="全部类别">
-                    <el-option v-for="type in accountTypeOptions" :key="type" :label="type" :value="type" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="每页数量">
-                  <el-input-number v-model="accountForm.topK" :min="1" :max="100" />
-                </el-form-item>
-                <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleAccountSearch">
-                  搜索
-                </el-button>
-              </el-form>
-            </el-tab-pane>
+        <template v-if="imageInputMode === 'url'">
+          <el-input
+            v-model="imageForm.imageUrl"
+            size="large"
+            placeholder="请输入图片 URL"
+            clearable
+            class="primary-search-input"
+            @keyup.enter="handleImageUrlSearch"
+          >
+            <template #append>
+              <el-button type="primary" :loading="searchLoading" @click="handleImageUrlSearch">搜索</el-button>
+            </template>
+          </el-input>
+        </template>
+        <template v-else-if="imageInputMode === 'upload'">
+          <el-upload drag :show-file-list="false" :http-request="handleImageUpload" accept="image/*">
+            <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
+          </el-upload>
+          <div v-if="uploadedImagePreviewUrl" class="image-preview">
+            <p class="image-preview__label">已选择图片：</p>
+            <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
+          </div>
+        </template>
+        <template v-else>
+          <el-input
+            v-model="imageForm.base64"
+            type="textarea"
+            :rows="4"
+            placeholder="粘贴图片 base64"
+            class="primary-search-input"
+          />
+          <el-button
+            type="primary"
+            size="large"
+            class="primary-search-button"
+            :loading="searchLoading"
+            @click="handleImageBase64Search"
+          >
+            搜索
+          </el-button>
+        </template>
 
-            <el-tab-pane label="实体" name="entity">
-              <el-form label-position="top">
-                <el-form-item label="实体关键词">
-                  <el-input
-                    v-model="entityForm.keyword"
-                    placeholder="输入实体名称或别名关键词"
-                    clearable
-                    @keyup.enter="handleEntitySearch"
-                  />
-                </el-form-item>
-                <el-form-item label="节点类型">
-                  <el-select v-model="entityForm.label" class="full-width" clearable placeholder="全部类型">
-                    <el-option v-for="label in entityLabels" :key="label" :label="label" :value="label" />
-                  </el-select>
-                </el-form-item>
-                <el-button type="primary" class="full-width" :loading="entityLoading" @click="handleEntitySearch">
-                  搜索
-                </el-button>
-              </el-form>
-            </el-tab-pane>
-          </el-tabs>
-        </el-card>
-      </el-col>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <el-radio-group v-model="imageForm.targetModalities">
+              <el-radio value="all">全部（以图搜文 + 以图搜图）</el-radio>
+              <el-radio value="text">仅文字内容（以图搜文）</el-radio>
+              <el-radio value="image">仅图片内容（以图搜图）</el-radio>
+            </el-radio-group>
+            <el-input-number v-model="imageForm.topK" :min="1" :max="100" class="mt-sm" />
+          </el-collapse-item>
+        </el-collapse>
+      </div>
 
-      <el-col :span="17">
-        <el-card class="result-panel" shadow="never">
+      <!-- 账号 -->
+      <div v-else-if="activeMode === 'account'" class="primary-input-area">
+        <el-input
+          v-model="accountForm.queryText"
+          size="large"
+          placeholder="账号名称、简介关键词，或一段语义描述"
+          clearable
+          class="primary-search-input"
+          @keyup.enter="handleAccountSearch"
+        >
+          <template #append>
+            <el-button type="primary" :loading="searchLoading" @click="handleAccountSearch">搜索</el-button>
+          </template>
+        </el-input>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <div class="options-grid">
+              <el-select v-model="accountForm.platform" clearable placeholder="全部平台">
+                <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
+              </el-select>
+              <el-select v-model="accountForm.accountType" clearable placeholder="全部类别">
+                <el-option v-for="type in accountTypeOptions" :key="type" :label="type" :value="type" />
+              </el-select>
+              <el-input-number v-model="accountForm.topK" :min="1" :max="100" />
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
+      <!-- 实体 -->
+      <div v-else class="primary-input-area">
+        <el-input
+          v-model="entityForm.keyword"
+          size="large"
+          placeholder="输入实体名称或别名关键词"
+          clearable
+          class="primary-search-input"
+          @keyup.enter="handleEntitySearch"
+        >
+          <template #append>
+            <el-button type="primary" :loading="entityLoading" @click="handleEntitySearch">搜索</el-button>
+          </template>
+        </el-input>
+        <el-collapse class="more-options">
+          <el-collapse-item title="更多选项">
+            <el-select v-model="entityForm.label" clearable placeholder="全部类型">
+              <el-option v-for="label in entityLabels" :key="label" :label="label" :value="label" />
+            </el-select>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+    </el-card>
+
+    <el-card class="result-panel" shadow="never">
           <template #header>
             <div v-if="activeMode === 'account'" class="result-header">
               <span>共 {{ accountResultMeta.total }} 条结果，耗时 {{ accountResultMeta.durationMs }}ms</span>
@@ -321,8 +371,6 @@
             </div>
           </div>
         </el-card>
-      </el-col>
-    </el-row>
 
     <el-dialog
       v-model="graphDialogVisible"
@@ -1061,15 +1109,79 @@ const graphOption = computed(() => {
   color: #111827;
 }
 
-.page-header p,
 .muted-text {
   margin: 6px 0 0;
   font-size: 13px;
   color: #6b7280;
 }
 
-.mode-switcher {
-  margin-bottom: 18px;
+.scope-switcher {
+  display: flex;
+  justify-content: center;
+}
+
+.primary-search-card :deep(.el-card__body) {
+  padding: 24px 32px;
+}
+
+.content-mode-switcher {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.primary-input-area {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.primary-search-input :deep(.el-input__wrapper),
+.primary-search-input :deep(.el-textarea__inner) {
+  font-size: 15px;
+}
+
+.primary-search-input {
+  display: block;
+}
+
+.primary-search-button {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.image-source-switcher {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.more-options {
+  margin-top: 16px;
+  border: none;
+}
+
+.more-options :deep(.el-collapse-item__header) {
+  font-size: 13px;
+  color: #6b7280;
+  border: none;
+  justify-content: center;
+}
+
+.more-options :deep(.el-collapse-item__wrap),
+.more-options :deep(.el-collapse-item__content) {
+  border: none;
+  padding-bottom: 4px;
+}
+
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.mt-sm {
+  margin-top: 12px;
 }
 
 .entity-result-grid {
@@ -1092,20 +1204,11 @@ const graphOption = computed(() => {
   font-weight: 500;
 }
 
-.search-panel,
-.result-panel {
-  min-height: 680px;
-}
-
-.full-width {
-  width: 100%;
-}
-
 .switch-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .upload-text {
@@ -1337,11 +1440,13 @@ const graphOption = computed(() => {
   height: 540px;
 }
 
-@media (max-width: 1100px) {
-  :deep(.el-col-7),
-  :deep(.el-col-17) {
-    max-width: 100%;
-    flex: 0 0 100%;
+@media (max-width: 768px) {
+  .primary-search-card :deep(.el-card__body) {
+    padding: 16px;
+  }
+
+  .options-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
