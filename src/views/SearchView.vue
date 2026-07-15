@@ -289,10 +289,11 @@
                 :key="entity.id"
                 class="entity-result-card"
                 shadow="hover"
-                @click="goProfiles(entity)"
+                @click="openGraphDialog(entity.label, entity.id)"
               >
                 <el-tag size="small" effect="plain">{{ entity.label }}</el-tag>
                 <div class="entity-result-card__name">{{ entity.name }}</div>
+                <div class="entity-result-card__hint">点击查看图谱</div>
               </el-card>
             </div>
           </div>
@@ -385,7 +386,7 @@
                   </div>
                   <div>
                     <el-button size="small" :disabled="!item.authorAccountId" @click.stop="goAuthorProfile(item)">查看画像</el-button>
-                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog(item)">查看图谱</el-button>
+                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog('MediaContent', item.id)">查看图谱</el-button>
                   </div>
                 </div>
               </el-card>
@@ -654,7 +655,7 @@ const resultMeta = reactive({
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
-const entityLabels = ['Person', 'SocialAccount', 'Organization', 'Narrative', 'Event', 'Location', 'MediaContent']
+const entityLabels = ['Person', 'Organization', 'Event', 'Location']
 const accountTypeOptions = [
   'ordinary_user', 'news_media', 'state_affiliated_media', 'government_agency',
   'political_actor', 'political_party_or_campaign', 'military_security_agency',
@@ -941,11 +942,10 @@ const handleEntitySearch = async () => {
 
 const normalizeEntity = (item: unknown, index: number): EntityResult => {
   const data = item as Record<string, unknown>
-  const properties = (data.properties ?? {}) as Record<string, unknown>
   return {
-    id: String(data.id ?? properties.id ?? index),
+    id: String(data.id ?? index),
     label: String(data.label ?? data.entityType ?? '-'),
-    name: String(data.name ?? properties.canonicalName ?? properties.canonicalLabel ?? properties.handle ?? data.id ?? '-')
+    name: String(data.canonicalName ?? data.name ?? '-')
   }
 }
 
@@ -1013,10 +1013,6 @@ const goAuthorProfile = (item: MediaContent) => {
   router.push({ path: '/profiles', query: { authorAccountId: item.authorAccountId } })
 }
 
-const goProfiles = (entity: EntityResult) => {
-  router.push({ path: '/profiles', query: { entityId: entity.id, label: entity.label } })
-}
-
 const openContentDetail = async (item: MediaContent) => {
   contentDetailVisible.value = true
   contentDetailLoading.value = true
@@ -1043,15 +1039,15 @@ const imageAssetUrls = (assets: MediaAsset[]): string[] =>
 const hasPropagation = (prop?: ContentPropagation | null): boolean =>
   Boolean(prop && (prop.parent || prop.repostOf || prop.quotedContent))
 
-const openGraphDialog = async (item: MediaContent) => {
+const openGraphDialog = async (label: string, id: string) => {
   graphDialogReady.value = false
   graphData.value = { nodes: [], relations: [] }
   graphDialogVisible.value = true
   graphLoading.value = true
   try {
-    graphData.value = (await searchGraph('MediaContent', item.id)) as unknown as GraphData
+    graphData.value = (await searchGraph(label, id)) as unknown as GraphData
   } catch {
-    ElMessage.error('加载内容图谱失败')
+    ElMessage.error('加载图谱失败')
   } finally {
     graphLoading.value = false
   }
@@ -1253,6 +1249,12 @@ const graphOption = computed(() => {
 .entity-result-card__name {
   margin-top: 8px;
   font-weight: 500;
+}
+
+.entity-result-card__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
 }
 
 .switch-row {
