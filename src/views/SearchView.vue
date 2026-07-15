@@ -326,6 +326,13 @@
                     <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
                     <el-tag type="info">{{ item.language || '-' }}</el-tag>
                     <el-tag effect="plain">{{ item.contentType || '-' }}</el-tag>
+                    <el-tooltip
+                      v-if="getContentScore(item.id) !== null"
+                      content="ES 关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
+                      placement="top"
+                    >
+                      <el-tag type="warning" effect="plain">相关度 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
+                    </el-tooltip>
                   </div>
                   <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
                 </div>
@@ -516,6 +523,7 @@ interface SearchResult {
   durationMs: number
   searchType: string
   highlights?: Record<string, Record<string, string[]>>
+  scores?: Record<string, number>
 }
 
 interface MediaContent {
@@ -616,6 +624,7 @@ const contentDetailLoading = ref(false)
 const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
 const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
+const resultScores = ref<Record<string, number>>({})
 const expandedIds = ref<Set<string>>(new Set())
 const entityResults = ref<EntityResult[]>([])
 const graphData = ref<GraphData>({ nodes: [], relations: [] })
@@ -703,7 +712,8 @@ const normalizeResult = (result: unknown, fallbackType: string): SearchResult =>
     total: data.total ?? items.length,
     durationMs: data.durationMs ?? 0,
     searchType: data.searchType ?? fallbackType,
-    highlights: data.highlights
+    highlights: data.highlights,
+    scores: data.scores
   }
 }
 
@@ -714,6 +724,7 @@ const applySearchResult = (result: unknown, fallbackType: string) => {
   resultMeta.durationMs = normalized.durationMs
   resultMeta.searchType = normalized.searchType
   resultHighlights.value = normalized.highlights ?? {}
+  resultScores.value = normalized.scores ?? {}
   expandedIds.value = new Set()
 }
 
@@ -723,6 +734,7 @@ const clearResults = () => {
   resultMeta.durationMs = 0
   resultMeta.searchType = ''
   resultHighlights.value = {}
+  resultScores.value = {}
   expandedIds.value = new Set()
 }
 
@@ -929,6 +941,11 @@ const getHighlight = (contentId: string): string[] | null => {
   const highlight = resultHighlights.value[contentId]
   if (!highlight) return null
   return highlight.body_text ?? highlight.title ?? null
+}
+
+const getContentScore = (contentId: string): number | null => {
+  const score = resultScores.value[contentId]
+  return score === undefined ? null : score
 }
 
 const isExpanded = (id: string) => expandedIds.value.has(id)
