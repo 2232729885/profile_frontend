@@ -3,40 +3,25 @@
     <div class="page-header">
       <div>
         <h1>综合检索</h1>
-        <p>文本、语义、混合与图片多模态检索</p>
+        <p>按检索对象分类：内容、账号、实体</p>
       </div>
     </div>
-
-    <el-card class="entity-search-card" shadow="never">
-      <template #header>实体快速查找</template>
-      <div class="entity-search-form">
-        <el-input v-model="entityForm.keyword" placeholder="输入实体关键词" clearable @keyup.enter="handleEntitySearch" />
-        <el-select v-model="entityForm.label" placeholder="节点类型" clearable>
-          <el-option v-for="label in entityLabels" :key="label" :label="label" :value="label" />
-        </el-select>
-        <el-button type="primary" :loading="entityLoading" @click="handleEntitySearch">搜索</el-button>
-      </div>
-      <div class="entity-result">
-        <span class="muted-text">结果：</span>
-        <el-tag
-          v-for="entity in entityResults"
-          :key="entity.id"
-          class="entity-tag"
-          effect="plain"
-          @click="goProfiles(entity)"
-        >
-          {{ entity.label }} · {{ entity.name }}
-        </el-tag>
-        <span v-if="!entityResults.length" class="muted-text">暂无结果</span>
-      </div>
-    </el-card>
 
     <el-row :gutter="16">
       <el-col :span="7">
         <el-card class="search-panel" shadow="never">
           <el-tabs v-model="activeMode" tab-position="top" @tab-change="handleModeChange">
-            <el-tab-pane label="文本检索" name="text">
-              <el-form label-position="top">
+            <el-tab-pane label="内容" name="content">
+              <div class="mode-switcher">
+                <el-radio-group v-model="contentMode" size="default">
+                  <el-radio-button value="hybrid">智能融合</el-radio-button>
+                  <el-radio-button value="text">关键词</el-radio-button>
+                  <el-radio-button value="semantic">语义</el-radio-button>
+                  <el-radio-button value="image">以图搜索</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <el-form v-if="contentMode === 'text'" label-position="top">
                 <el-form-item label="关键词">
                   <el-input v-model="textForm.keyword" placeholder="请输入关键词" clearable />
                 </el-form-item>
@@ -55,10 +40,8 @@
                 </el-form-item>
                 <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleTextSearch">搜索</el-button>
               </el-form>
-            </el-tab-pane>
 
-            <el-tab-pane label="语义检索" name="semantic">
-              <el-form label-position="top">
+              <el-form v-else-if="contentMode === 'semantic'" label-position="top">
                 <el-form-item label="查询文本">
                   <el-input v-model="semanticForm.queryText" type="textarea" :rows="4" placeholder="请输入查询文本" />
                 </el-form-item>
@@ -77,10 +60,8 @@
                 </el-form-item>
                 <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleSemanticSearch">搜索</el-button>
               </el-form>
-            </el-tab-pane>
 
-            <el-tab-pane label="混合检索" name="hybrid">
-              <el-form label-position="top">
+              <el-form v-else-if="contentMode === 'hybrid'" label-position="top">
                 <el-form-item label="查询文本">
                   <el-input v-model="hybridForm.queryText" type="textarea" :rows="3" placeholder="请输入查询文本" />
                 </el-form-item>
@@ -104,10 +85,8 @@
                 </el-form-item>
                 <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleHybridSearch">搜索</el-button>
               </el-form>
-            </el-tab-pane>
 
-            <el-tab-pane label="图片检索" name="image">
-              <el-form label-position="top">
+              <el-form v-else label-position="top">
                 <el-form-item label="返回数量 topK">
                   <el-input-number v-model="imageForm.topK" :min="1" :max="100" />
                 </el-form-item>
@@ -118,42 +97,48 @@
                     <el-radio value="image">仅图片内容（以图搜图）</el-radio>
                   </el-radio-group>
                 </el-form-item>
-                <el-tabs v-model="imageInputMode" class="image-input-tabs">
-                  <el-tab-pane label="URL 方式" name="url">
-                    <el-form-item label="图片 URL">
-                      <el-input v-model="imageForm.imageUrl" placeholder="请输入图片 URL" clearable />
-                    </el-form-item>
-                    <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageUrlSearch">
-                      搜索
-                    </el-button>
-                  </el-tab-pane>
-                  <el-tab-pane label="文件上传" name="upload">
-                    <el-upload
-                      drag
-                      :show-file-list="false"
-                      :http-request="handleImageUpload"
-                      accept="image/*"
-                    >
-                      <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
-                    </el-upload>
-                    <div v-if="uploadedImagePreviewUrl" class="image-preview">
-                      <p class="image-preview__label">已选择图片：</p>
-                      <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
-                    </div>
-                  </el-tab-pane>
-                  <el-tab-pane label="Base64" name="base64">
-                    <el-form-item label="Base64">
-                      <el-input v-model="imageForm.base64" type="textarea" :rows="5" placeholder="粘贴图片 base64" />
-                    </el-form-item>
-                    <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageBase64Search">
-                      搜索
-                    </el-button>
-                  </el-tab-pane>
-                </el-tabs>
+                <el-form-item label="图片来源">
+                  <el-radio-group v-model="imageInputMode" size="small">
+                    <el-radio-button value="url">URL</el-radio-button>
+                    <el-radio-button value="upload">上传文件</el-radio-button>
+                    <el-radio-button value="base64">Base64</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+
+                <template v-if="imageInputMode === 'url'">
+                  <el-form-item label="图片 URL">
+                    <el-input v-model="imageForm.imageUrl" placeholder="请输入图片 URL" clearable />
+                  </el-form-item>
+                  <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageUrlSearch">
+                    搜索
+                  </el-button>
+                </template>
+                <template v-else-if="imageInputMode === 'upload'">
+                  <el-upload
+                    drag
+                    :show-file-list="false"
+                    :http-request="handleImageUpload"
+                    accept="image/*"
+                  >
+                    <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
+                  </el-upload>
+                  <div v-if="uploadedImagePreviewUrl" class="image-preview">
+                    <p class="image-preview__label">已选择图片：</p>
+                    <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
+                  </div>
+                </template>
+                <template v-else>
+                  <el-form-item label="Base64">
+                    <el-input v-model="imageForm.base64" type="textarea" :rows="5" placeholder="粘贴图片 base64" />
+                  </el-form-item>
+                  <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleImageBase64Search">
+                    搜索
+                  </el-button>
+                </template>
               </el-form>
             </el-tab-pane>
 
-            <el-tab-pane label="账号检索" name="account">
+            <el-tab-pane label="账号" name="account">
               <el-form label-position="top">
                 <el-form-item label="关键词/语义描述">
                   <el-input
@@ -180,6 +165,27 @@
                 </el-button>
               </el-form>
             </el-tab-pane>
+
+            <el-tab-pane label="实体" name="entity">
+              <el-form label-position="top">
+                <el-form-item label="实体关键词">
+                  <el-input
+                    v-model="entityForm.keyword"
+                    placeholder="输入实体名称或别名关键词"
+                    clearable
+                    @keyup.enter="handleEntitySearch"
+                  />
+                </el-form-item>
+                <el-form-item label="节点类型">
+                  <el-select v-model="entityForm.label" class="full-width" clearable placeholder="全部类型">
+                    <el-option v-for="label in entityLabels" :key="label" :label="label" :value="label" />
+                  </el-select>
+                </el-form-item>
+                <el-button type="primary" class="full-width" :loading="entityLoading" @click="handleEntitySearch">
+                  搜索
+                </el-button>
+              </el-form>
+            </el-tab-pane>
           </el-tabs>
         </el-card>
       </el-col>
@@ -190,6 +196,10 @@
             <div v-if="activeMode === 'account'" class="result-header">
               <span>共 {{ accountResultMeta.total }} 条结果，耗时 {{ accountResultMeta.durationMs }}ms</span>
               <el-button size="small" @click="clearAccountResults">清空</el-button>
+            </div>
+            <div v-else-if="activeMode === 'entity'" class="result-header">
+              <span>共 {{ entityResults.length }} 条结果</span>
+              <el-button size="small" @click="entityResults = []">清空</el-button>
             </div>
             <div v-else class="result-header">
               <span>共 {{ resultMeta.total }} 条结果，耗时 {{ resultMeta.durationMs }}ms，检索类型：{{ resultMeta.searchType || '-' }}</span>
@@ -218,6 +228,21 @@
                   <span>关注 {{ item.followingCount ?? 0 }}</span>
                   <span>发帖 {{ item.postCount ?? 0 }}</span>
                 </div>
+              </el-card>
+            </div>
+          </div>
+          <div v-else-if="activeMode === 'entity'" v-loading="entityLoading" class="result-body">
+            <el-empty v-if="!entityLoading && !entityResults.length" description="暂无检索结果" />
+            <div v-else class="entity-result-grid">
+              <el-card
+                v-for="entity in entityResults"
+                :key="entity.id"
+                class="entity-result-card"
+                shadow="hover"
+                @click="goProfiles(entity)"
+              >
+                <el-tag size="small" effect="plain">{{ entity.label }}</el-tag>
+                <div class="entity-result-card__name">{{ entity.name }}</div>
               </el-card>
             </div>
           </div>
@@ -433,7 +458,8 @@ import {
   searchText
 } from '@/api/search'
 
-type SearchMode = 'text' | 'semantic' | 'hybrid' | 'image' | 'account'
+type SearchMode = 'content' | 'account' | 'entity'
+type ContentSearchMode = 'text' | 'semantic' | 'hybrid' | 'image'
 type TargetModality = 'all' | 'text' | 'image'
 
 interface SearchResult {
@@ -528,7 +554,8 @@ interface GraphData {
 }
 
 const router = useRouter()
-const activeMode = ref<SearchMode>('text')
+const activeMode = ref<SearchMode>('content')
+const contentMode = ref<ContentSearchMode>('hybrid')
 const imageInputMode = ref<'url' | 'upload' | 'base64'>('url')
 const uploadedImagePreviewUrl = ref('')
 const searchLoading = ref(false)
@@ -660,6 +687,7 @@ const clearAccountResults = () => {
 const handleModeChange = () => {
   clearResults()
   clearAccountResults()
+  entityResults.value = []
 }
 
 const handleAccountSearch = async () => {
@@ -1040,27 +1068,28 @@ const graphOption = computed(() => {
   color: #6b7280;
 }
 
-.entity-search-card :deep(.el-card__body) {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.mode-switcher {
+  margin-bottom: 18px;
 }
 
-.entity-search-form {
+.entity-result-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 180px auto;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
 
-.entity-result {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+.entity-result-card {
+  cursor: pointer;
+  transition: transform 0.15s ease;
 }
 
-.entity-tag {
-  cursor: pointer;
+.entity-result-card:hover {
+  transform: translateY(-2px);
+}
+
+.entity-result-card__name {
+  margin-top: 8px;
+  font-weight: 500;
 }
 
 .search-panel,
@@ -1077,10 +1106,6 @@ const graphOption = computed(() => {
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 18px;
-}
-
-.image-input-tabs {
-  margin-top: 8px;
 }
 
 .upload-text {
@@ -1313,10 +1338,6 @@ const graphOption = computed(() => {
 }
 
 @media (max-width: 1100px) {
-  .entity-search-form {
-    grid-template-columns: 1fr;
-  }
-
   :deep(.el-col-7),
   :deep(.el-col-17) {
     max-width: 100%;
