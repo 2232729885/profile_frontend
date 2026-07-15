@@ -287,13 +287,26 @@
               <el-card
                 v-for="entity in entityResults"
                 :key="entity.id"
-                class="entity-result-card"
+                :class="['entity-result-card', { 'entity-result-card--clickable': entity.canOpenGraph }]"
                 shadow="hover"
-                @click="openGraphDialog(entity.label, entity.id, entity.name)"
+                @click="handleEntityCardClick(entity)"
               >
-                <el-tag size="small" effect="plain">{{ entity.label }}</el-tag>
+                <div class="entity-result-card__meta">
+                  <el-tag size="small" effect="plain">{{ entity.label }}</el-tag>
+                  <el-tag v-if="entity.resultType !== entity.label" size="small" type="info" effect="plain">
+                    {{ entity.resultType }}
+                  </el-tag>
+                </div>
                 <div class="entity-result-card__name">{{ entity.name }}</div>
-                <div class="entity-result-card__hint">点击查看图谱</div>
+                <div v-if="entity.description" class="entity-result-card__description">{{ entity.description }}</div>
+                <div class="entity-result-card__scores">
+                  <span v-if="entity.esScore !== null">关键词命中</span>
+                  <span v-if="entity.similarityScore !== null">语义 {{ formatScore(entity.similarityScore) }}</span>
+                  <span v-if="entity.fusionScore !== null">综合 {{ formatScore(entity.fusionScore) }}</span>
+                </div>
+                <div class="entity-result-card__hint">
+                  {{ entity.canOpenGraph ? '点击查看图谱' : '全域融合结果' }}
+                </div>
               </el-card>
             </div>
           </div>
@@ -529,7 +542,7 @@ import {
   searchByImage,
   searchByImageBase64,
   searchByImageUpload,
-  searchEntities,
+  searchEntitiesSemantic,
   searchGraph,
   searchHybrid,
   searchSemantic,
@@ -601,6 +614,12 @@ interface EntityResult {
   id: string
   label: string
   name: string
+  resultType: string
+  description: string
+  esScore: number | null
+  similarityScore: number | null
+  fusionScore: number | null
+  canOpenGraph: boolean
 }
 
 interface SocialAccountResult {
@@ -663,7 +682,7 @@ const resultMeta = reactive({
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
-const entityLabels = ['Person', 'Organization', 'Event', 'Location']
+const entityLabels = ['Person', 'Organization', 'Event', 'Location', 'SocialAccount', 'MediaContent']
 const accountTypeOptions = [
   'ordinary_user', 'news_media', 'state_affiliated_media', 'government_agency',
   'political_actor', 'political_party_or_campaign', 'military_security_agency',
@@ -934,10 +953,10 @@ const handleEntitySearch = async () => {
   }
   entityLoading.value = true
   try {
-    const result = await searchEntities({
+    const result = await searchEntitiesSemantic({
       keyword: entityForm.keyword.trim(),
-      label: entityForm.label || undefined,
-      limit: 10
+      entityType: entityForm.label || undefined,
+      topK: 10
     })
     const items = Array.isArray(result) ? result : ((result as { records?: unknown[]; items?: unknown[] }).items ?? (result as { records?: unknown[] }).records ?? [])
     entityResults.value = items.map((item, index) => normalizeEntity(item, index))
@@ -950,11 +969,67 @@ const handleEntitySearch = async () => {
 
 const normalizeEntity = (item: unknown, index: number): EntityResult => {
   const data = item as Record<string, unknown>
+  const resultType = String(data.resultType ?? data.label ?? data.entityType ?? '-')
+  const label = String(data.label ?? data.entityType ?? resultType)
+  const name = String(
+    data.canonicalName ??
+      data.canonical_name ??
+      data.displayName ??
+      data.handle ??
+      data.title ??
+      data.platformContentId ??
+      data.platform_content_id ??
+      data.name ??
+      '-'
+  )
   return {
     id: String(data.id ?? index),
-    label: String(data.label ?? data.entityType ?? '-'),
-    name: String(data.canonicalName ?? data.name ?? '-')
+    label,
+    name,
+    resultType,
+    description: entityDescription(data),
+    esScore: numericOrNull(data.esScore),
+    similarityScore: numericOrNull(data.similarityScore),
+    fusionScore: numericOrNull(data.fusionScore),
+    canOpenGraph: ['Person', 'Organization', 'Event', 'Location', 'SocialAccount', 'MediaContent'].includes(label)
   }
+}
+
+const numericOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const entityDescription = (data: Record<string, unknown>): string => {
+  const resultType = String(data.resultType ?? data.label ?? data.entityType ?? '')
+  if (resultType === 'SocialAccount') {
+    const handle = data.handle ? `@${data.handle}` : ''
+    const platform = data.platform ? String(data.platform) : ''
+    return [platform, handle, data.bio].filter(Boolean).join(' · ')
+  }
+  if (resultType === 'MediaContent') {
+    const platform = data.platform ? String(data.platform) : ''
+    const language = data.language ? String(data.language) : ''
+    return [platform, language, data.bodyText].filter(Boolean).join(' · ')
+  }
+  const aliases = Array.isArray(data.aliases) ? data.aliases.slice(0, 3).join(' / ') : ''
+  return aliases ? `别名：${aliases}` : ''
+}
+
+const formatScore = (score: number): string => {
+  if (!Number.isFinite(score)) return '-'
+  if (Math.abs(score) >= 100) return score.toFixed(0)
+  if (Math.abs(score) >= 10) return score.toFixed(2)
+  return score.toFixed(3)
+}
+
+const handleEntityCardClick = (entity: EntityResult) => {
+  if (!entity.canOpenGraph) return
+  openGraphDialog(entity.label, entity.id, entity.name)
 }
 
 const formatTime = (time?: string) => (time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-')
@@ -1125,6 +1200,12 @@ const activeLabelIndexMap = computed(
 )
 const hasGraphData = computed(() => graphData.value.nodes.length > 0)
 
+const truncateText = (value: unknown, maxLength = 24): string => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 1)}…`
+}
+
 const getNodeDisplayName = (node: GraphNode) => {
   const props = node.properties ?? {}
   const name =
@@ -1137,10 +1218,27 @@ const getNodeDisplayName = (node: GraphNode) => {
   return String(name ?? node.id)
 }
 
+const getNodeGraphName = (node: GraphNode) => {
+  const props = node.properties ?? {}
+  if (node.label === 'MediaContent') {
+    const contentId = props.platformContentId ?? props.platform_content_id
+    if (contentId) return `内容 ${truncateText(contentId, 14)}`
+    return truncateText(props.title ?? props.bodyText ?? node.id, 18)
+  }
+  if (node.label === 'MediaAsset') {
+    return `素材 ${truncateText(props.assetType ?? node.id, 12)}`
+  }
+  return truncateText(getNodeDisplayName(node), 24)
+}
+
 const TOOLTIP_PROPERTY_LABELS: Record<string, string> = {
+  platformContentId: '内容ID',
+  title: '标题',
+  bodyText: '正文',
   entityType: '实体类型',
   importanceScore: '重要性',
   platform: '平台',
+  language: '语言',
   contentType: '内容类型',
   publishedAt: '发布时间',
   accountType: '账号类别',
@@ -1155,7 +1253,7 @@ const buildNodeTooltip = (node: GraphNode): string => {
   for (const [key, label] of Object.entries(TOOLTIP_PROPERTY_LABELS)) {
     const value = props[key]
     if (value !== undefined && value !== null && value !== '') {
-      lines.push(`${label}：${value}`)
+      lines.push(`${label}：${truncateText(value, key === 'bodyText' ? 120 : 80)}`)
     }
   }
   return lines.join('<br/>')
@@ -1195,7 +1293,7 @@ const graphOption = computed(() => {
         },
         data: graphData.value.nodes.map(node => ({
           id: node.id,
-          name: getNodeDisplayName(node),
+          name: getNodeGraphName(node),
           symbolSize: node.label === 'MediaContent' ? 40 : 24,
           category: activeLabelIndexMap.value.get(node.label) ?? 0,
           label: { show: true }
@@ -1313,17 +1411,46 @@ const graphOption = computed(() => {
 }
 
 .entity-result-card {
-  cursor: pointer;
   transition: transform 0.15s ease;
 }
 
-.entity-result-card:hover {
+.entity-result-card--clickable {
+  cursor: pointer;
+}
+
+.entity-result-card--clickable:hover {
   transform: translateY(-2px);
+}
+
+.entity-result-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .entity-result-card__name {
   margin-top: 8px;
   font-weight: 500;
+}
+
+.entity-result-card__description {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b7280;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.entity-result-card__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .entity-result-card__hint {

@@ -12,6 +12,7 @@ export const getOverviewGraph = (limit = 300) =>
 
 export const searchPath = (params: any) => request.get('/api/search/path', { params })
 export const searchEntities = (params: any) => request.get('/api/search/entities', { params })
+export const searchEntitiesSemantic = (params: any) => request.post('/api/search/entities/semantic', params)
 export const searchByImage = (params: any) => request.post('/api/search/image', params)
 export const searchByImageBase64 = (params: any) => request.post('/api/search/image/base64', params)
 

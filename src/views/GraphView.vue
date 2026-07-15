@@ -266,6 +266,12 @@ const categoryIndex = computed(() => new Map(labelOptions.map((label, index) => 
 
 const relationKey = (relation: GraphRelation) => `${relation.sourceId}::${relation.targetId}::${relation.type}`
 
+const truncateText = (value: unknown, maxLength = 24): string => {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 1)}…`
+}
+
 const getNodeName = (node: GraphNode) =>
   String(
     node.properties?.canonicalName ??
@@ -275,6 +281,18 @@ const getNodeName = (node: GraphNode) =>
       node.properties?.platformContentId ??
       node.id.slice(0, 8)
   )
+
+const getNodeGraphName = (node: GraphNode) => {
+  if (node.label === 'MediaContent') {
+    const contentId = node.properties?.platformContentId ?? node.properties?.platform_content_id
+    if (contentId) return `内容 ${truncateText(contentId, 14)}`
+    return truncateText(node.properties?.title ?? node.properties?.bodyText ?? node.id, 18)
+  }
+  if (node.label === 'MediaAsset') {
+    return `素材 ${truncateText(node.properties?.assetType ?? node.id, 12)}`
+  }
+  return truncateText(getNodeName(node), 24)
+}
 
 const tagType = (label: string) => {
   if (label === 'Person') return 'primary'
@@ -380,7 +398,7 @@ const graphOption = computed(() => ({
         const size = symbolSize(node)
         return {
           id: node.id,
-          name: getNodeName(node),
+          name: getNodeGraphName(node),
           symbolSize: selected ? size + 8 : size,
           category: categoryIndex.value.get(node.label) ?? 0,
           itemStyle: selected
