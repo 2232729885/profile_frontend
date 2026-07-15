@@ -19,3 +19,5 @@ export const searchByImageUpload = (formData: FormData) =>
   request.post('/api/search/image/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
+
+export const searchAccounts = (params: any) => request.post('/api/search/accounts', params)

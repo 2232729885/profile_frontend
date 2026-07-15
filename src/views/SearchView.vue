@@ -152,6 +152,34 @@
                 </el-tabs>
               </el-form>
             </el-tab-pane>
+
+            <el-tab-pane label="账号检索" name="account">
+              <el-form label-position="top">
+                <el-form-item label="关键词/语义描述">
+                  <el-input
+                    v-model="accountForm.queryText"
+                    placeholder="账号名称、简介关键词，或一段语义描述"
+                    clearable
+                  />
+                </el-form-item>
+                <el-form-item label="平台过滤">
+                  <el-select v-model="accountForm.platform" class="full-width" clearable placeholder="全部平台">
+                    <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="账号类别过滤">
+                  <el-select v-model="accountForm.accountType" class="full-width" clearable placeholder="全部类别">
+                    <el-option v-for="type in accountTypeOptions" :key="type" :label="type" :value="type" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="每页数量">
+                  <el-input-number v-model="accountForm.topK" :min="1" :max="100" />
+                </el-form-item>
+                <el-button type="primary" class="full-width" :loading="searchLoading" @click="handleAccountSearch">
+                  搜索
+                </el-button>
+              </el-form>
+            </el-tab-pane>
           </el-tabs>
         </el-card>
       </el-col>
@@ -159,12 +187,41 @@
       <el-col :span="17">
         <el-card class="result-panel" shadow="never">
           <template #header>
-            <div class="result-header">
+            <div v-if="activeMode === 'account'" class="result-header">
+              <span>共 {{ accountResultMeta.total }} 条结果，耗时 {{ accountResultMeta.durationMs }}ms</span>
+              <el-button size="small" @click="clearAccountResults">清空</el-button>
+            </div>
+            <div v-else class="result-header">
               <span>共 {{ resultMeta.total }} 条结果，耗时 {{ resultMeta.durationMs }}ms，检索类型：{{ resultMeta.searchType || '-' }}</span>
               <el-button size="small" @click="clearResults">清空</el-button>
             </div>
           </template>
-          <div v-loading="searchLoading" class="result-body">
+          <div v-if="activeMode === 'account'" v-loading="searchLoading" class="result-body">
+            <el-empty v-if="!searchLoading && !accountResults.length" description="暂无检索结果" />
+            <div v-else class="result-list">
+              <el-card v-for="item in accountResults" :key="item.id" class="result-card" shadow="hover">
+                <div class="result-card__meta">
+                  <div class="tag-group">
+                    <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
+                    <el-tag type="info" effect="plain">{{ item.accountType || '未分类' }}</el-tag>
+                    <el-tag v-if="item.verified" type="success" effect="plain">已认证</el-tag>
+                    <el-tag v-if="item.isSuspended" type="danger" effect="plain">疑似封禁</el-tag>
+                  </div>
+                </div>
+                <div class="body-text">
+                  <strong>{{ item.displayName || item.handle || '-' }}</strong>
+                  <span class="muted-text"> @{{ item.handle || '-' }}</span>
+                </div>
+                <div class="body-text">{{ item.bio || '（无简介）' }}</div>
+                <div class="result-card__stats">
+                  <span>粉丝 {{ item.followersCount ?? 0 }}</span>
+                  <span>关注 {{ item.followingCount ?? 0 }}</span>
+                  <span>发帖 {{ item.postCount ?? 0 }}</span>
+                </div>
+              </el-card>
+            </div>
+          </div>
+          <div v-else v-loading="searchLoading" class="result-body">
             <el-empty v-if="!searchLoading && !results.length" description="暂无检索结果" />
             <div v-else class="result-list">
               <el-alert
@@ -365,6 +422,7 @@ import { ElMessage } from 'element-plus'
 import { Picture, VideoPlay } from '@element-plus/icons-vue'
 import { getContentDetail } from '@/api/ingestion'
 import {
+  searchAccounts,
   searchByImage,
   searchByImageBase64,
   searchByImageUpload,
@@ -375,7 +433,7 @@ import {
   searchText
 } from '@/api/search'
 
-type SearchMode = 'text' | 'semantic' | 'hybrid' | 'image'
+type SearchMode = 'text' | 'semantic' | 'hybrid' | 'image' | 'account'
 type TargetModality = 'all' | 'text' | 'image'
 
 interface SearchResult {
@@ -438,6 +496,20 @@ interface EntityResult {
   name: string
 }
 
+interface SocialAccountResult {
+  id: string
+  platform?: string
+  handle?: string
+  displayName?: string
+  bio?: string
+  accountType?: string
+  verified?: boolean
+  isSuspended?: boolean
+  followersCount?: number
+  followingCount?: number
+  postCount?: number
+}
+
 interface GraphNode {
   id: string
   label: string
@@ -481,6 +553,26 @@ const resultMeta = reactive({
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
 const entityLabels = ['Person', 'SocialAccount', 'Organization', 'Narrative', 'Event', 'Location', 'MediaContent']
+const accountTypeOptions = [
+  'ordinary_user', 'news_media', 'state_affiliated_media', 'government_agency',
+  'political_actor', 'political_party_or_campaign', 'military_security_agency',
+  'international_organization', 'ngo_or_civil_society', 'academic_or_expert',
+  'commercial_brand', 'platform_official', 'influencer_kol', 'community_group',
+  'anonymous_account', 'suspected_bot_or_automated', 'unknown', 'other'
+]
+
+const accountResults = ref<SocialAccountResult[]>([])
+const accountResultMeta = reactive({
+  total: 0,
+  durationMs: 0
+})
+
+const accountForm = reactive({
+  queryText: '',
+  platform: '',
+  accountType: '',
+  topK: 20
+})
 
 const entityForm = reactive({
   keyword: '',
@@ -559,8 +651,39 @@ const clearResults = () => {
   expandedIds.value = new Set()
 }
 
+const clearAccountResults = () => {
+  accountResults.value = []
+  accountResultMeta.total = 0
+  accountResultMeta.durationMs = 0
+}
+
 const handleModeChange = () => {
   clearResults()
+  clearAccountResults()
+}
+
+const handleAccountSearch = async () => {
+  if (!accountForm.queryText.trim()) {
+    ElMessage.warning('请输入关键词或语义描述')
+    return
+  }
+  searchLoading.value = true
+  const startedAt = Date.now()
+  try {
+    const data = (await searchAccounts({
+      queryText: accountForm.queryText.trim(),
+      platform: accountForm.platform || undefined,
+      accountType: accountForm.accountType || undefined,
+      topK: accountForm.topK
+    })) as unknown as SocialAccountResult[]
+    accountResults.value = data ?? []
+    accountResultMeta.total = accountResults.value.length
+    accountResultMeta.durationMs = Date.now() - startedAt
+  } catch {
+    ElMessage.error('检索失败')
+  } finally {
+    searchLoading.value = false
+  }
 }
 
 const runSearch = async (searcher: () => Promise<unknown>, fallbackType: string) => {
