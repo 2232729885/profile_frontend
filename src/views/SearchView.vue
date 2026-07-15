@@ -311,7 +311,44 @@
             </div>
           </div>
           <div v-else v-loading="searchLoading" class="result-body">
-            <el-empty v-if="!searchLoading && !results.length" description="暂无检索结果" />
+            <el-empty
+              v-if="!searchLoading && !results.length && !resultImageItems.length"
+              description="暂无检索结果"
+            />
+            <div v-else-if="isHybridImageResult" class="image-result-grid">
+              <el-card
+                v-for="image in resultImageItems"
+                :key="image.assetId"
+                class="image-result-card"
+                shadow="hover"
+                @click="openContentDetailById(image.contentId)"
+              >
+                <div class="image-result-card__thumb">
+                  <el-image :src="buildImageResultUrl(image)" fit="cover">
+                    <template #error>
+                      <div class="asset-error">
+                        <el-icon><Picture /></el-icon>
+                        <span>图片加载失败</span>
+                      </div>
+                    </template>
+                  </el-image>
+                </div>
+                <div class="image-result-card__meta">
+                  <div class="tag-group">
+                    <el-tag size="small" :type="platformTagType(image.platform)">{{ image.platform || '-' }}</el-tag>
+                    <el-tag v-if="image.similarityScore !== undefined" size="small" type="success" effect="plain">
+                      相似度 {{ image.similarityScore.toFixed(3) }}
+                    </el-tag>
+                  </div>
+                  <div class="image-result-card__title">
+                    {{ image.contentTitle || image.contentBodyText || '无标题内容' }}
+                  </div>
+                  <div class="image-result-card__caption">
+                    {{ image.contentBodyText || '点击查看所属贴文' }}
+                  </div>
+                </div>
+              </el-card>
+            </div>
             <div v-else class="result-list">
               <el-alert
                 v-if="resultMeta.searchType === 'image'"
@@ -555,6 +592,7 @@ type TargetModality = 'all' | 'text' | 'image'
 
 interface SearchResult {
   items: MediaContent[]
+  imageItems?: ImageResultItem[]
   total: number
   durationMs: number
   searchType: string
@@ -622,6 +660,25 @@ interface EntityResult {
   canOpenGraph: boolean
 }
 
+interface ImageResultItem {
+  assetId: string
+  contentId: string
+  sourceUrl?: string
+  storageUri?: string
+  minioBucket?: string
+  minioKey?: string
+  mimeType?: string
+  width?: number
+  height?: number
+  similarityScore?: number
+  platform?: string
+  language?: string
+  contentType?: string
+  contentTitle?: string
+  contentBodyText?: string
+  publishedAt?: string
+}
+
 interface SocialAccountResult {
   id: string
   platform?: string
@@ -667,6 +724,7 @@ const contentDetailVisible = ref(false)
 const contentDetailLoading = ref(false)
 const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
+const resultImageItems = ref<ImageResultItem[]>([])
 const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
 const resultScores = ref<Record<string, number>>({})
 const resultSimilarityScores = ref<Record<string, number>>({})
@@ -679,6 +737,7 @@ const resultMeta = reactive({
   durationMs: 0,
   searchType: ''
 })
+const isHybridImageResult = computed(() => resultMeta.searchType === 'hybrid-image')
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
@@ -755,6 +814,7 @@ const normalizeResult = (result: unknown, fallbackType: string): SearchResult =>
   const items = data.items ?? []
   return {
     items,
+    imageItems: data.imageItems ?? [],
     total: data.total ?? items.length,
     durationMs: data.durationMs ?? 0,
     searchType: data.searchType ?? fallbackType,
@@ -768,6 +828,7 @@ const normalizeResult = (result: unknown, fallbackType: string): SearchResult =>
 const applySearchResult = (result: unknown, fallbackType: string) => {
   const normalized = normalizeResult(result, fallbackType)
   results.value = normalized.items
+  resultImageItems.value = normalized.imageItems ?? []
   resultMeta.total = normalized.total
   resultMeta.durationMs = normalized.durationMs
   resultMeta.searchType = normalized.searchType
@@ -780,6 +841,7 @@ const applySearchResult = (result: unknown, fallbackType: string) => {
 
 const clearResults = () => {
   results.value = []
+  resultImageItems.value = []
   resultMeta.total = 0
   resultMeta.durationMs = 0
   resultMeta.searchType = ''
@@ -1097,11 +1159,16 @@ const goAuthorProfile = (item: MediaContent) => {
 }
 
 const openContentDetail = async (item: MediaContent) => {
+  await openContentDetailById(item.id)
+}
+
+const openContentDetailById = async (contentId?: string) => {
+  if (!contentId) return
   contentDetailVisible.value = true
   contentDetailLoading.value = true
   contentDetail.value = null
   try {
-    contentDetail.value = (await getContentDetail(item.id)) as unknown as ContentDetail
+    contentDetail.value = (await getContentDetail(contentId)) as unknown as ContentDetail
   } catch {
     ElMessage.error('加载详情失败')
   } finally {
@@ -1114,6 +1181,13 @@ const buildAssetUrl = (asset: MediaAsset): string => {
     return `http://172.16.40.232:9000/${asset.minioBucket}/${asset.minioKey}`
   }
   return asset.sourceUrl || ''
+}
+
+const buildImageResultUrl = (image: ImageResultItem): string => {
+  if (image.minioKey && image.minioBucket) {
+    return `http://172.16.40.232:9000/${image.minioBucket}/${image.minioKey}`
+  }
+  return image.sourceUrl || image.storageUri || ''
 }
 
 const imageAssetUrls = (assets: MediaAsset[]): string[] =>
@@ -1402,6 +1476,60 @@ const graphOption = computed(() => {
 
 .mt-sm {
   margin-top: 12px;
+}
+
+.image-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.image-result-card {
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.image-result-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.image-result-card__thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #f3f4f6;
+}
+
+.image-result-card__thumb :deep(.el-image) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.image-result-card__meta {
+  padding: 10px;
+}
+
+.image-result-card__title {
+  margin-top: 8px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.image-result-card__caption {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .entity-result-grid {
