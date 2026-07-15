@@ -624,8 +624,8 @@ interface GraphNode {
 }
 
 interface GraphRelation {
-  sourceId: string
-  targetId: string
+  fromId: string
+  toId: string
   type: string
 }
 
@@ -1201,8 +1201,8 @@ const graphOption = computed(() => {
           label: { show: true }
         })),
         links: graphData.value.relations.map(relation => ({
-          source: relation.sourceId,
-          target: relation.targetId,
+          source: relation.fromId,
+          target: relation.toId,
           type: relation.type
         }))
       }
