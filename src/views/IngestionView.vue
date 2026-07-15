@@ -435,6 +435,10 @@
                   </el-collapse-item>
                 </el-collapse>
               </template>
+              <el-empty
+                v-else-if="!isPipelineRecordType"
+                :description="nonPipelineHint"
+              />
               <el-empty v-else description="暂无 T1 标注结果" />
             </el-tab-pane>
 
@@ -487,6 +491,10 @@
                 </template>
                 <pre v-else class="json-block">{{ t2Parsed.raw }}</pre>
               </template>
+              <el-empty
+                v-else-if="!isPipelineRecordType"
+                :description="nonPipelineHint"
+              />
               <el-empty v-else description="暂无 T2 抽取结果" />
             </el-tab-pane>
 
@@ -514,6 +522,10 @@
                 </el-collapse>
               </template>
               <el-empty
+                v-else-if="!isPipelineRecordType"
+                :description="nonPipelineHint"
+              />
+              <el-empty
                 v-else
                 description="暂无 T3 融合结果（这条内容抽取出的实体都没有候选可比对，走的是直接新建，没有调用 T3；如果预期应该有候选却仍为空，可能是 T3 调用失败）"
               />
@@ -537,6 +549,10 @@
                   </el-collapse-item>
                 </el-collapse>
               </template>
+              <el-empty
+                v-else-if="!isPipelineRecordType"
+                :description="nonPipelineHint"
+              />
               <el-empty v-else description="暂无 T4 索引结果" />
             </el-tab-pane>
             <el-tab-pane v-if="rawDetail.pipelineStatus === 'FAILED'" label="错误信息" name="error">
@@ -719,6 +735,14 @@ const formatJsonString = (value?: string | null) => {
     return value
   }
 }
+
+// 只有 social_content/news_article 会走 T1->T2->T4 流水线，media_asset/social_account/
+// account_relation/collection_task 这几种类型天然不会有 t1-t4Output，不是处理失败
+const PIPELINE_RECORD_TYPES = ['social_content', 'news_article']
+const isPipelineRecordType = computed(() => PIPELINE_RECORD_TYPES.includes(rawDetail.value?.recordType ?? ''))
+const nonPipelineHint = computed(
+  () => `「${rawDetail.value?.recordType ?? '-'}」这个类型不走 T1→T2→T4 流水线，不会有这部分数据（不是处理失败）`
+)
 
 const t1Parsed = computed<Record<string, any>>(() => {
   const raw = rawDetail.value?.t1Output ?? ''
