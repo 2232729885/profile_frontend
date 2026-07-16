@@ -79,6 +79,10 @@
                 <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
               </el-select>
               <el-input-number v-model="semanticForm.topK" :min="1" :max="100" />
+              <div class="option-control">
+                <span class="option-control__label">语义门槛 {{ semanticForm.semanticMinScore.toFixed(2) }}</span>
+                <el-slider v-model="semanticForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
+              </div>
             </div>
           </el-collapse-item>
         </el-collapse>
@@ -117,6 +121,10 @@
             <div class="options-grid">
               <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选）" clearable />
               <el-input-number v-model="hybridForm.topK" :min="1" :max="100" />
+              <div class="option-control">
+                <span class="option-control__label">语义门槛 {{ hybridForm.semanticMinScore.toFixed(2) }}</span>
+                <el-slider v-model="hybridForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
+              </div>
             </div>
             <div class="switch-row">
               <el-switch v-model="hybridForm.enableEs" active-text="关键词召回" />
@@ -789,7 +797,8 @@ const semanticForm = reactive({
   queryText: '',
   platform: '',
   language: '',
-  topK: 20
+  topK: 20,
+  semanticMinScore: 0.45
 })
 
 const hybridForm = reactive({
@@ -799,7 +808,8 @@ const hybridForm = reactive({
   enableEs: true,
   enableMilvus: true,
   enableNeo4j: false,
-  targetModalities: 'all' as TargetModality
+  targetModalities: 'all' as TargetModality,
+  semanticMinScore: 0.45
 })
 
 const imageForm = reactive({
@@ -939,7 +949,8 @@ const handleSemanticSearch = async () => {
         queryText: semanticForm.queryText.trim(),
         platform: semanticForm.platform || undefined,
         language: semanticForm.language || undefined,
-        topK: semanticForm.topK
+        topK: semanticForm.topK,
+        semanticMinScore: semanticForm.semanticMinScore
       }),
     'semantic'
   )
@@ -959,7 +970,8 @@ const handleHybridSearch = async () => {
         enableEs: hybridForm.enableEs,
         enableMilvus: hybridForm.enableMilvus,
         enableNeo4j: hybridForm.enableNeo4j,
-        targetModalities: hybridForm.targetModalities
+        targetModalities: hybridForm.targetModalities,
+        semanticMinScore: hybridForm.semanticMinScore
       }),
     'hybrid'
   )
@@ -1531,6 +1543,18 @@ const graphOption = computed(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
+}
+
+.option-control {
+  min-width: 180px;
+}
+
+.option-control__label {
+  display: block;
+  margin-bottom: 2px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .mt-sm {
