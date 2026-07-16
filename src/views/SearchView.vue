@@ -13,211 +13,115 @@
     </div>
 
     <el-card class="primary-search-card" shadow="never">
-      <div v-if="activeMode === 'content'" class="content-mode-switcher">
-        <el-radio-group v-model="contentMode">
-          <el-radio-button value="hybrid">智能融合</el-radio-button>
-          <el-radio-button value="text">关键词</el-radio-button>
-          <el-radio-button value="semantic">语义</el-radio-button>
-        </el-radio-group>
-      </div>
-
-      <!-- 内容 · 关键词 -->
-      <div v-if="activeMode === 'content' && contentMode === 'text'" class="primary-input-area">
-        <el-input
-          v-model="textForm.keyword"
-          size="large"
-          placeholder="请输入关键词"
-          clearable
-          class="primary-search-input"
-          @keyup.enter="handleTextSearch"
-        >
-          <template #append>
-            <el-button type="primary" :loading="searchLoading" @click="handleTextSearch">搜索</el-button>
-          </template>
-        </el-input>
-        <el-collapse class="more-options">
-          <el-collapse-item title="更多选项">
-            <div class="options-grid">
-              <el-select v-model="textForm.platform" clearable placeholder="全部平台">
-                <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
-              </el-select>
-              <el-select v-model="textForm.language" clearable placeholder="全部语言">
-                <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
-              </el-select>
-              <el-input-number v-model="textForm.size" :min="1" :max="100" />
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-      </div>
-
-      <!-- 内容 · 语义 -->
-      <div v-else-if="activeMode === 'content' && contentMode === 'semantic'" class="primary-input-area">
-        <el-input
-          v-model="semanticForm.queryText"
-          type="textarea"
-          :rows="3"
-          size="large"
-          placeholder="请输入查询文本，支持自然语言描述"
-          class="primary-search-input"
-        />
-        <el-button
-          type="primary"
-          size="large"
-          class="primary-search-button"
-          :loading="searchLoading"
-          @click="handleSemanticSearch"
-        >
-          搜索
-        </el-button>
-        <el-collapse class="more-options">
-          <el-collapse-item title="更多选项">
-            <div class="options-grid">
-              <el-select v-model="semanticForm.platform" clearable placeholder="全部平台">
-                <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
-              </el-select>
-              <el-select v-model="semanticForm.language" clearable placeholder="全部语言">
-                <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
-              </el-select>
-              <el-input-number v-model="semanticForm.topK" :min="1" :max="100" />
-              <div class="option-control">
-                <span class="option-control__label">语义门槛 {{ semanticForm.semanticMinScore.toFixed(2) }}</span>
-                <el-slider v-model="semanticForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
-              </div>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-      </div>
-
-      <!-- 内容 · 智能融合 -->
-      <div v-else-if="activeMode === 'content' && contentMode === 'hybrid'" class="primary-input-area">
-        <el-input
-          v-model="hybridForm.queryText"
-          size="large"
-          placeholder="输入文字搜索，或点击右侧图片按钮上传图片"
-          clearable
-          class="primary-search-input"
-          @keyup.enter="handleHybridSearch"
-        >
-          <template #suffix>
+      <!-- 内容 -->
+      <div v-if="activeMode === 'content'" class="primary-input-area content-search-area">
+        <div class="primary-search-row">
+          <div class="primary-search-box">
+            <input
+              v-model="hybridForm.queryText"
+              class="primary-search-native-input"
+              placeholder="搜索内容、事件、账号线索，或上传图片"
+              type="text"
+              autocomplete="off"
+              @keyup.enter="handleHybridSearch"
+            />
+            <button
+              v-if="hybridForm.queryText"
+              class="primary-search-clear"
+              type="button"
+              title="清空"
+              @click="hybridForm.queryText = ''"
+            >
+              ×
+            </button>
             <el-upload
-              class="hybrid-upload-button"
+              class="hybrid-upload-button primary-search-upload"
               :show-file-list="false"
               :http-request="handleHybridImageUpload"
               accept="image/*"
             >
               <el-button :icon="Picture" circle text title="上传图片搜索" />
             </el-upload>
-          </template>
-          <template #append>
-            <el-button type="primary" :loading="searchLoading" @click="handleHybridSearch">搜索</el-button>
-          </template>
-        </el-input>
+          </div>
+          <el-button
+            type="primary"
+            class="primary-search-button"
+            :icon="Search"
+            :loading="searchLoading"
+            title="搜索"
+            aria-label="搜索"
+            @click="handleHybridSearch"
+          />
+        </div>
         <div v-if="uploadedImagePreviewUrl" class="hybrid-image-preview">
           <el-image :src="uploadedImagePreviewUrl" fit="cover" />
           <span>已用上传图片检索，可继续输入文字或换图</span>
         </div>
-        <el-collapse class="more-options">
-          <el-collapse-item title="更多选项">
-            <div class="options-grid">
-              <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选）" clearable />
-              <el-input-number v-model="hybridForm.topK" :min="1" :max="100" />
-              <div class="option-control">
-                <span class="option-control__label">语义门槛 {{ hybridForm.semanticMinScore.toFixed(2) }}</span>
-                <el-slider v-model="hybridForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
-              </div>
+        <div class="content-filter-panel">
+          <div class="filter-row filter-row--fields">
+            <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选）" clearable />
+            <el-select v-model="hybridForm.platform" clearable placeholder="全部平台">
+              <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
+            </el-select>
+            <el-select v-model="hybridForm.language" clearable placeholder="全部语言">
+              <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
+            </el-select>
+            <div class="option-control option-control--compact">
+              <span class="option-control__label">每页</span>
+              <el-input-number v-model="contentPageSize" :min="1" :max="100" controls-position="right" />
+            </div>
+          </div>
+          <div class="filter-row filter-row--controls">
+            <div class="option-control option-control--slider">
+              <span class="option-control__label">语义门槛 {{ hybridForm.semanticMinScore.toFixed(2) }}</span>
+              <el-slider v-model="hybridForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
             </div>
             <div class="switch-row">
-              <el-switch v-model="hybridForm.enableEs" active-text="关键词召回" />
-              <el-switch v-model="hybridForm.enableMilvus" active-text="语义召回" />
-              <el-switch v-model="hybridForm.enableNeo4j" active-text="图谱扩展" />
+              <el-switch v-model="hybridForm.enableEs" active-text="关键词" />
+              <el-switch v-model="hybridForm.enableMilvus" active-text="语义" />
+              <el-switch v-model="hybridForm.enableNeo4j" active-text="实体关联" />
             </div>
-            <el-radio-group v-model="hybridForm.targetModalities" class="mt-sm">
-              <el-radio value="all">全部结果</el-radio>
-              <el-radio value="text">只看贴文</el-radio>
-              <el-radio value="image">只看图片</el-radio>
+            <el-radio-group v-model="hybridForm.targetModalities" class="target-radio-group">
+              <el-radio-button value="all">全部</el-radio-button>
+              <el-radio-button value="text">贴文</el-radio-button>
+              <el-radio-button value="image">图片</el-radio-button>
             </el-radio-group>
-          </el-collapse-item>
-        </el-collapse>
-      </div>
-
-      <!-- 内容 · 以图搜索 -->
-      <div v-else-if="activeMode === 'content' && contentMode === 'image'" class="primary-input-area">
-        <div class="image-source-switcher">
-          <el-radio-group v-model="imageInputMode">
-            <el-radio-button value="url">URL</el-radio-button>
-            <el-radio-button value="upload">上传文件</el-radio-button>
-            <el-radio-button value="base64">Base64</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <template v-if="imageInputMode === 'url'">
-          <el-input
-            v-model="imageForm.imageUrl"
-            size="large"
-            placeholder="请输入图片 URL"
-            clearable
-            class="primary-search-input"
-            @keyup.enter="handleImageUrlSearch"
-          >
-            <template #append>
-              <el-button type="primary" :loading="searchLoading" @click="handleImageUrlSearch">搜索</el-button>
-            </template>
-          </el-input>
-        </template>
-        <template v-else-if="imageInputMode === 'upload'">
-          <el-upload drag :show-file-list="false" :http-request="handleImageUpload" accept="image/*">
-            <div class="upload-text">拖拽图片到此处，或点击选择文件</div>
-          </el-upload>
-          <div v-if="uploadedImagePreviewUrl" class="image-preview">
-            <p class="image-preview__label">已选择图片：</p>
-            <el-image :src="uploadedImagePreviewUrl" class="image-preview__image" fit="contain" />
           </div>
-        </template>
-        <template v-else>
-          <el-input
-            v-model="imageForm.base64"
-            type="textarea"
-            :rows="4"
-            placeholder="粘贴图片 base64"
-            class="primary-search-input"
-          />
-          <el-button
-            type="primary"
-            size="large"
-            class="primary-search-button"
-            :loading="searchLoading"
-            @click="handleImageBase64Search"
-          >
-            搜索
-          </el-button>
-        </template>
-
-        <el-collapse class="more-options">
-          <el-collapse-item title="更多选项">
-            <el-radio-group v-model="imageForm.targetModalities">
-              <el-radio value="all">全部（以图搜文 + 以图搜图）</el-radio>
-              <el-radio value="text">仅文字内容（以图搜文）</el-radio>
-              <el-radio value="image">仅图片内容（以图搜图）</el-radio>
-            </el-radio-group>
-            <el-input-number v-model="imageForm.topK" :min="1" :max="100" class="mt-sm" />
-          </el-collapse-item>
-        </el-collapse>
+        </div>
       </div>
 
       <!-- 账号 -->
       <div v-else-if="activeMode === 'account'" class="primary-input-area">
-        <el-input
-          v-model="accountForm.queryText"
-          size="large"
-          placeholder="账号名称、简介关键词，或一段语义描述"
-          clearable
-          class="primary-search-input"
-          @keyup.enter="handleAccountSearch"
-        >
-          <template #append>
-            <el-button type="primary" :loading="searchLoading" @click="handleAccountSearch">搜索</el-button>
-          </template>
-        </el-input>
+        <div class="primary-search-row">
+          <div class="primary-search-box">
+            <input
+              v-model="accountForm.queryText"
+              class="primary-search-native-input"
+              placeholder="账号名称、简介关键词，或一段语义描述"
+              type="text"
+              autocomplete="off"
+              @keyup.enter="handleAccountSearch"
+            />
+            <button
+              v-if="accountForm.queryText"
+              class="primary-search-clear"
+              type="button"
+              title="清空"
+              @click="accountForm.queryText = ''"
+            >
+              ×
+            </button>
+          </div>
+          <el-button
+            type="primary"
+            class="primary-search-button"
+            :icon="Search"
+            :loading="searchLoading"
+            title="搜索"
+            aria-label="搜索"
+            @click="handleAccountSearch"
+          />
+        </div>
         <el-collapse class="more-options">
           <el-collapse-item title="更多选项">
             <div class="options-grid">
@@ -235,18 +139,36 @@
 
       <!-- 实体 -->
       <div v-else class="primary-input-area">
-        <el-input
-          v-model="entityForm.keyword"
-          size="large"
-          placeholder="输入实体名称或别名关键词"
-          clearable
-          class="primary-search-input"
-          @keyup.enter="handleEntitySearch"
-        >
-          <template #append>
-            <el-button type="primary" :loading="entityLoading" @click="handleEntitySearch">搜索</el-button>
-          </template>
-        </el-input>
+        <div class="primary-search-row">
+          <div class="primary-search-box">
+            <input
+              v-model="entityForm.keyword"
+              class="primary-search-native-input"
+              placeholder="输入实体名称或别名关键词"
+              type="text"
+              autocomplete="off"
+              @keyup.enter="handleEntitySearch"
+            />
+            <button
+              v-if="entityForm.keyword"
+              class="primary-search-clear"
+              type="button"
+              title="清空"
+              @click="entityForm.keyword = ''"
+            >
+              ×
+            </button>
+          </div>
+          <el-button
+            type="primary"
+            class="primary-search-button"
+            :icon="Search"
+            :loading="entityLoading"
+            title="搜索"
+            aria-label="搜索"
+            @click="handleEntitySearch"
+          />
+        </div>
         <el-collapse class="more-options">
           <el-collapse-item title="更多选项">
             <el-select v-model="entityForm.label" clearable placeholder="全部类型">
@@ -331,92 +253,99 @@
               v-if="!searchLoading && !results.length && !resultImageItems.length"
               description="暂无检索结果"
             />
-            <div v-else-if="isImageResultGrid" class="image-result-grid">
-              <el-card
-                v-for="image in resultImageItems"
-                :key="image.assetId"
-                class="image-result-card"
-                shadow="hover"
-                @click="openContentDetailById(image.contentId)"
-              >
-                <div class="image-result-card__thumb">
-                  <el-image :src="buildImageResultUrl(image)" fit="cover">
-                    <template #error>
-                      <div class="asset-error">
-                        <el-icon><Picture /></el-icon>
-                        <span>图片加载失败</span>
+            <div v-else class="mixed-result-layout">
+              <section v-if="resultImageItems.length" class="image-results-section">
+                <div class="result-section-header">
+                  <span>匹配图片</span>
+                  <span>点击图片查看所属贴文</span>
+                </div>
+                <div class="image-result-grid">
+                  <el-card
+                    v-for="image in resultImageItems"
+                    :key="image.assetId"
+                    class="image-result-card"
+                    shadow="hover"
+                    @click="openContentDetailById(image.contentId)"
+                  >
+                    <div class="image-result-card__thumb">
+                      <el-image :src="buildImageResultUrl(image)" fit="cover">
+                        <template #error>
+                          <div class="asset-error">
+                            <el-icon><Picture /></el-icon>
+                            <span>图片加载失败</span>
+                          </div>
+                        </template>
+                      </el-image>
+                    </div>
+                    <div class="image-result-card__meta">
+                      <div class="tag-group">
+                        <el-tag size="small" :type="platformTagType(image.platform)">{{ image.platform || '-' }}</el-tag>
+                        <el-tag v-if="image.similarityScore !== undefined" size="small" type="success" effect="plain">
+                          相似度 {{ image.similarityScore.toFixed(3) }}
+                        </el-tag>
                       </div>
-                    </template>
-                  </el-image>
+                      <div class="image-result-card__title">
+                        {{ image.contentTitle || image.contentBodyText || '无标题内容' }}
+                      </div>
+                      <div class="image-result-card__caption">
+                        {{ image.contentBodyText || '点击查看所属贴文' }}
+                      </div>
+                    </div>
+                  </el-card>
                 </div>
-                <div class="image-result-card__meta">
-                  <div class="tag-group">
-                    <el-tag size="small" :type="platformTagType(image.platform)">{{ image.platform || '-' }}</el-tag>
-                    <el-tag v-if="image.similarityScore !== undefined" size="small" type="success" effect="plain">
-                      相似度 {{ image.similarityScore.toFixed(3) }}
-                    </el-tag>
+              </section>
+              <div v-if="results.length" class="result-list">
+                <el-alert
+                  v-if="resultMeta.searchType === 'image' && !resultImageItems.length"
+                  style="margin-bottom: 12px"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                >
+                  <template #title>
+                    以图搜索结果（共 {{ resultMeta.total }} 条）
+                  </template>
+                  <template #default>
+                    结果包含「以图搜文」（图像语义匹配的文字内容）和「以图搜图」（相似图片内容）两类。
+                    当前数据集中图片资产较少，主要结果来自以图搜文。
+                  </template>
+                </el-alert>
+                <el-card
+                  v-for="item in results"
+                  :key="item.id"
+                  class="result-card"
+                  shadow="hover"
+                  @click="openContentDetail(item)"
+                >
+                  <div class="result-card__meta">
+                    <div class="tag-group">
+                      <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
+                      <el-tag type="info">{{ item.language || '-' }}</el-tag>
+                      <el-tag effect="plain">{{ item.contentType || '-' }}</el-tag>
+                      <el-tooltip
+                        v-if="getContentScore(item.id) !== null"
+                        content="关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
+                        placement="top"
+                      >
+                        <el-tag type="warning" effect="plain">关键词 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
+                      </el-tooltip>
+                      <el-tooltip
+                        v-if="getSimilarityScore(item.id) !== null"
+                        content="向量语义相似度，越接近1越相似"
+                        placement="top"
+                      >
+                        <el-tag type="success" effect="plain">语义 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
+                      </el-tooltip>
+                      <el-tooltip
+                        v-if="getFusionScore(item.id) !== null"
+                        content="多路检索融合（RRF）后的综合排序分数，决定了智能融合模式的最终排序，本身没有绝对意义"
+                        placement="top"
+                      >
+                        <el-tag type="primary" effect="plain">综合排序 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
+                      </el-tooltip>
+                    </div>
+                    <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
                   </div>
-                  <div class="image-result-card__title">
-                    {{ image.contentTitle || image.contentBodyText || '无标题内容' }}
-                  </div>
-                  <div class="image-result-card__caption">
-                    {{ image.contentBodyText || '点击查看所属贴文' }}
-                  </div>
-                </div>
-              </el-card>
-            </div>
-            <div v-else class="result-list">
-              <el-alert
-                v-if="resultMeta.searchType === 'image'"
-                style="margin-bottom: 12px"
-                type="info"
-                :closable="false"
-                show-icon
-              >
-                <template #title>
-                  以图搜索结果（共 {{ resultMeta.total }} 条）
-                </template>
-                <template #default>
-                  结果包含「以图搜文」（图像语义匹配的文字内容）和「以图搜图」（相似图片内容）两类。
-                  当前数据集中图片资产较少，主要结果来自以图搜文。
-                </template>
-              </el-alert>
-              <el-card
-                v-for="item in results"
-                :key="item.id"
-                class="result-card"
-                shadow="hover"
-                @click="openContentDetail(item)"
-              >
-                <div class="result-card__meta">
-                  <div class="tag-group">
-                    <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
-                    <el-tag type="info">{{ item.language || '-' }}</el-tag>
-                    <el-tag effect="plain">{{ item.contentType || '-' }}</el-tag>
-                    <el-tooltip
-                      v-if="getContentScore(item.id) !== null"
-                      content="关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
-                      placement="top"
-                    >
-                      <el-tag type="warning" effect="plain">关键词 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
-                    </el-tooltip>
-                    <el-tooltip
-                      v-if="getSimilarityScore(item.id) !== null"
-                      content="向量语义相似度，越接近1越相似"
-                      placement="top"
-                    >
-                      <el-tag type="success" effect="plain">语义 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
-                    </el-tooltip>
-                    <el-tooltip
-                      v-if="getFusionScore(item.id) !== null"
-                      content="多路检索融合（RRF）后的综合排序分数，决定了智能融合模式的最终排序，本身没有绝对意义"
-                      placement="top"
-                    >
-                      <el-tag type="primary" effect="plain">综合排序 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
-                    </el-tooltip>
-                  </div>
-                  <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
-                </div>
 
                 <div class="body-text" :class="{ collapsed: !getHighlight(item.id) && !isExpanded(item.id) && getBodyText(item).length > 200 }">
                   <template v-if="getHighlight(item.id)">
@@ -456,6 +385,19 @@
                   </div>
                 </div>
               </el-card>
+            </div>
+            <el-pagination
+              v-if="showContentPagination"
+              class="result-pagination"
+              background
+              :current-page="contentPage + 1"
+              :page-size="contentPageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="resultMeta.total"
+              layout="total, sizes, prev, pager, next"
+              @current-change="handleContentPageChange"
+              @size-change="handleContentPageSizeChange"
+            />
             </div>
           </div>
         </el-card>
@@ -582,29 +524,25 @@ use([CanvasRenderer, GraphChart, LegendComponent, TitleComponent, TooltipCompone
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import VChart from 'vue-echarts'
 import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { Picture, VideoPlay } from '@element-plus/icons-vue'
+import { Picture, Search, VideoPlay } from '@element-plus/icons-vue'
 import { getContentDetail } from '@/api/ingestion'
 import {
   searchAccounts,
-  searchByImage,
-  searchByImageBase64,
   searchByImageUpload,
   searchEntitiesSemantic,
   searchGraph,
-  searchHybrid,
-  searchSemantic,
-  searchText
+  searchHybrid
 } from '@/api/search'
 
 type SearchMode = 'content' | 'account' | 'entity'
-type ContentSearchMode = 'text' | 'semantic' | 'hybrid' | 'image'
 type TargetModality = 'all' | 'text' | 'image'
+type ContentSearchReplay = 'content' | 'content-upload'
 
 interface SearchResult {
   items: MediaContent[]
@@ -728,8 +666,6 @@ interface GraphData {
 
 const router = useRouter()
 const activeMode = ref<SearchMode>('content')
-const contentMode = ref<ContentSearchMode>('hybrid')
-const imageInputMode = ref<'url' | 'upload' | 'base64'>('url')
 const uploadedImagePreviewUrl = ref('')
 const searchLoading = ref(false)
 const entityLoading = ref(false)
@@ -741,6 +677,10 @@ const contentDetailLoading = ref(false)
 const contentDetail = ref<ContentDetail | null>(null)
 const results = ref<MediaContent[]>([])
 const resultImageItems = ref<ImageResultItem[]>([])
+const contentPage = ref(0)
+const contentPageSize = ref(10)
+const lastContentSearchKind = ref<ContentSearchReplay | null>(null)
+const lastUploadedSearchFile = ref<File | null>(null)
 const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
 const resultScores = ref<Record<string, number>>({})
 const resultSimilarityScores = ref<Record<string, number>>({})
@@ -753,8 +693,8 @@ const resultMeta = reactive({
   durationMs: 0,
   searchType: ''
 })
-const isImageResultGrid = computed(() =>
-  resultImageItems.value.length > 0 && ['hybrid-image', 'image'].includes(resultMeta.searchType)
+const showContentPagination = computed(() =>
+  activeMode.value === 'content' && resultMeta.total > contentPageSize.value
 )
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
@@ -786,37 +726,16 @@ const entityForm = reactive({
   label: ''
 })
 
-const textForm = reactive({
-  keyword: '',
-  platform: '',
-  language: '',
-  size: 20
-})
-
-const semanticForm = reactive({
-  queryText: '',
-  platform: '',
-  language: '',
-  topK: 20,
-  semanticMinScore: 0.45
-})
-
 const hybridForm = reactive({
   queryText: '',
   imageUrl: '',
-  topK: 20,
+  platform: '',
+  language: '',
   enableEs: true,
   enableMilvus: true,
   enableNeo4j: false,
   targetModalities: 'all' as TargetModality,
   semanticMinScore: 0.45
-})
-
-const imageForm = reactive({
-  imageUrl: '',
-  base64: '',
-  topK: 20,
-  targetModalities: 'all' as TargetModality
 })
 
 const clearUploadedImagePreview = () => {
@@ -862,6 +781,9 @@ const applySearchResult = (result: unknown, fallbackType: string) => {
 const clearResults = () => {
   results.value = []
   resultImageItems.value = []
+  contentPage.value = 0
+  lastContentSearchKind.value = null
+  lastUploadedSearchFile.value = null
   resultMeta.total = 0
   resultMeta.durationMs = 0
   resultMeta.searchType = ''
@@ -920,53 +842,24 @@ const runSearch = async (searcher: () => Promise<unknown>, fallbackType: string)
   }
 }
 
-const handleTextSearch = async () => {
-  if (!textForm.keyword.trim()) {
-    ElMessage.warning('请输入关键词')
-    return
-  }
-  await runSearch(
-    () =>
-      searchText({
-        keyword: textForm.keyword.trim(),
-        platform: textForm.platform || undefined,
-        language: textForm.language || undefined,
-        page: 0,
-        size: textForm.size
-      }),
-    'text'
-  )
-}
+const shouldResetPage = (resetPage: boolean | Event = true) => resetPage !== false
 
-const handleSemanticSearch = async () => {
-  if (!semanticForm.queryText.trim()) {
-    ElMessage.warning('请输入查询文本')
-    return
-  }
-  await runSearch(
-    () =>
-      searchSemantic({
-        queryText: semanticForm.queryText.trim(),
-        platform: semanticForm.platform || undefined,
-        language: semanticForm.language || undefined,
-        topK: semanticForm.topK,
-        semanticMinScore: semanticForm.semanticMinScore
-      }),
-    'semantic'
-  )
-}
-
-const handleHybridSearch = async () => {
+const handleHybridSearch = async (resetPage: boolean | Event = true) => {
   if (!hybridForm.queryText.trim() && !hybridForm.imageUrl.trim()) {
     ElMessage.warning('请输入查询文本或图片 URL')
     return
   }
+  if (shouldResetPage(resetPage)) contentPage.value = 0
+  lastContentSearchKind.value = 'content'
   await runSearch(
     () =>
       searchHybrid({
         queryText: hybridForm.queryText.trim() || undefined,
         imageUrl: hybridForm.imageUrl.trim() || undefined,
-        topK: hybridForm.topK,
+        platform: hybridForm.platform || undefined,
+        language: hybridForm.language || undefined,
+        page: contentPage.value,
+        size: contentPageSize.value,
         enableEs: hybridForm.enableEs,
         enableMilvus: hybridForm.enableMilvus,
         enableNeo4j: hybridForm.enableNeo4j,
@@ -977,17 +870,26 @@ const handleHybridSearch = async () => {
   )
 }
 
+const fetchUploadedImageSearch = (file: File, targetModalities: TargetModality) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('targetModalities', targetModalities)
+  formData.append('page', String(contentPage.value))
+  formData.append('size', String(contentPageSize.value))
+  return searchByImageUpload(formData)
+}
+
 const handleHybridImageUpload = async (options: UploadRequestOptions) => {
   clearUploadedImagePreview()
-  uploadedImagePreviewUrl.value = URL.createObjectURL(options.file as File)
+  const file = options.file as File
+  uploadedImagePreviewUrl.value = URL.createObjectURL(file)
+  contentPage.value = 0
+  lastContentSearchKind.value = 'content-upload'
+  lastUploadedSearchFile.value = file
 
-  const formData = new FormData()
-  formData.append('file', options.file)
-  formData.append('topK', String(hybridForm.topK))
-  formData.append('targetModalities', hybridForm.targetModalities)
   searchLoading.value = true
   try {
-    const result = await searchByImageUpload(formData)
+    const result = await fetchUploadedImageSearch(file, hybridForm.targetModalities)
     applySearchResult(result, 'image')
     options.onSuccess?.(result)
   } catch (error) {
@@ -998,57 +900,35 @@ const handleHybridImageUpload = async (options: UploadRequestOptions) => {
   }
 }
 
-const handleImageUrlSearch = async () => {
-  if (!imageForm.imageUrl.trim()) {
-    ElMessage.warning('请输入图片 URL')
+const rerunUploadedImageSearch = async () => {
+  const file = lastUploadedSearchFile.value
+  if (!file) {
+    ElMessage.warning('请重新选择图片')
     return
   }
-  await runSearch(
-    () =>
-      searchByImage({
-        imageUrl: imageForm.imageUrl.trim(),
-        topK: imageForm.topK,
-        targetModalities: imageForm.targetModalities
-      }),
-    'image'
-  )
+  await runSearch(() => fetchUploadedImageSearch(file, hybridForm.targetModalities), 'image')
 }
 
-const handleImageBase64Search = async () => {
-  if (!imageForm.base64.trim()) {
-    ElMessage.warning('请输入 base64')
-    return
+const rerunCurrentContentSearch = async () => {
+  switch (lastContentSearchKind.value) {
+    case 'content':
+      await handleHybridSearch(false)
+      break
+    case 'content-upload':
+      await rerunUploadedImageSearch()
+      break
   }
-  await runSearch(
-    () =>
-      searchByImageBase64({
-        base64: imageForm.base64.trim(),
-        topK: imageForm.topK,
-        targetModalities: imageForm.targetModalities
-      }),
-    'image'
-  )
 }
 
-const handleImageUpload = async (options: UploadRequestOptions) => {
-  clearUploadedImagePreview()
-  uploadedImagePreviewUrl.value = URL.createObjectURL(options.file as File)
+const handleContentPageChange = async (page: number) => {
+  contentPage.value = Math.max(page - 1, 0)
+  await rerunCurrentContentSearch()
+}
 
-  const formData = new FormData()
-  formData.append('file', options.file)
-  formData.append('topK', String(imageForm.topK))
-  formData.append('targetModalities', imageForm.targetModalities)
-  searchLoading.value = true
-  try {
-    const result = await searchByImageUpload(formData)
-    applySearchResult(result, 'image')
-    options.onSuccess?.(result)
-  } catch (error) {
-    ElMessage.error('图片上传检索失败')
-    options.onError?.(error as any)
-  } finally {
-    searchLoading.value = false
-  }
+const handleContentPageSizeChange = async (size: number) => {
+  contentPageSize.value = size
+  contentPage.value = 0
+  await rerunCurrentContentSearch()
 }
 
 const handleEntitySearch = async () => {
@@ -1287,12 +1167,6 @@ const handleGraphDialogOpened = async () => {
   graphDialogReady.value = true
 }
 
-watch(imageInputMode, mode => {
-  if (mode !== 'upload') {
-    clearUploadedImagePreview()
-  }
-})
-
 onUnmounted(() => {
   clearUploadedImagePreview()
 })
@@ -1457,34 +1331,102 @@ const graphOption = computed(() => {
   justify-content: center;
 }
 
-.primary-search-card :deep(.el-card__body) {
-  padding: 24px 32px;
-}
-
-.content-mode-switcher {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-}
-
-.primary-input-area {
-  max-width: 720px;
+.primary-search-card {
+  width: min(1120px, calc(100vw - 48px));
   margin: 0 auto;
 }
 
-.primary-search-input :deep(.el-input__wrapper),
-.primary-search-input :deep(.el-textarea__inner) {
+.primary-search-card :deep(.el-card__body) {
+  padding: 28px 36px;
+}
+
+.primary-input-area {
+  max-width: 1040px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.primary-input-area.content-search-area {
+  max-width: 1040px;
+  width: 100%;
+}
+
+.primary-search-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+}
+
+.primary-search-box {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 52px;
+  border: 1px solid #dcdfe6;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: #fff;
+  transition: border-color 0.15s ease;
+}
+
+.primary-search-box:focus-within {
+  border-color: #409eff;
+}
+
+.primary-search-native-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px 0 20px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #111827;
   font-size: 15px;
 }
 
-.primary-search-input {
-  display: block;
+.primary-search-native-input::placeholder {
+  color: #a8abb2;
+}
+
+.primary-search-clear {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #909399;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.primary-search-clear:hover {
+  background: #f3f4f6;
+}
+
+.primary-search-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex: 0 0 44px;
+}
+
+.primary-search-upload :deep(.el-upload) {
+  display: inline-flex;
 }
 
 .primary-search-button {
-  display: block;
-  width: 100%;
-  margin-top: 12px;
+  height: 52px;
+  width: 58px;
+  flex: 0 0 58px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .hybrid-upload-button {
@@ -1515,10 +1457,30 @@ const graphOption = computed(() => {
   border: 1px solid #e5e7eb;
 }
 
-.image-source-switcher {
+.content-filter-panel {
   display: flex;
-  justify-content: center;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.filter-row {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+}
+
+.filter-row--fields {
+  grid-template-columns: minmax(360px, 1.6fr) minmax(180px, 0.75fr) minmax(180px, 0.75fr) 132px;
+}
+
+.filter-row--controls {
+  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1fr) auto;
+  align-items: center;
 }
 
 .more-options {
@@ -1549,6 +1511,18 @@ const graphOption = computed(() => {
   min-width: 180px;
 }
 
+.option-control--compact {
+  min-width: 0;
+}
+
+.option-control--compact :deep(.el-input-number) {
+  width: 100%;
+}
+
+.option-control--slider {
+  min-width: 220px;
+}
+
 .option-control__label {
   display: block;
   margin-bottom: 2px;
@@ -1559,6 +1533,44 @@ const graphOption = computed(() => {
 
 .mt-sm {
   margin-top: 12px;
+}
+
+.target-radio-group {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.mixed-result-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.image-results-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.result-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.result-section-header span:last-child {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.result-pagination {
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .image-result-grid {
@@ -1674,29 +1686,7 @@ const graphOption = computed(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 12px;
-}
-
-.upload-text {
-  padding: 24px 12px;
-  color: #6b7280;
-}
-
-.image-preview {
-  margin-top: 8px;
-}
-
-.image-preview__label {
-  margin: 8px 0 4px;
-  color: #909399;
-  font-size: 12px;
-}
-
-.image-preview__image {
-  max-width: 100%;
-  max-height: 200px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  align-items: center;
 }
 
 .result-header {
@@ -1916,6 +1906,24 @@ const graphOption = computed(() => {
 @media (max-width: 768px) {
   .primary-search-card :deep(.el-card__body) {
     padding: 16px;
+  }
+
+  .filter-row,
+  .filter-row--fields,
+  .filter-row--controls {
+    grid-template-columns: 1fr;
+  }
+
+  .target-radio-group {
+    justify-self: stretch;
+  }
+
+  .target-radio-group :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .target-radio-group :deep(.el-radio-button__inner) {
+    width: 100%;
   }
 
   .options-grid {
