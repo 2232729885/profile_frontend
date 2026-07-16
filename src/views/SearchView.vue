@@ -18,7 +18,6 @@
           <el-radio-button value="hybrid">智能融合</el-radio-button>
           <el-radio-button value="text">关键词</el-radio-button>
           <el-radio-button value="semantic">语义</el-radio-button>
-          <el-radio-button value="image">以图搜索</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -89,36 +88,45 @@
       <div v-else-if="activeMode === 'content' && contentMode === 'hybrid'" class="primary-input-area">
         <el-input
           v-model="hybridForm.queryText"
-          type="textarea"
-          :rows="3"
           size="large"
-          placeholder="请输入查询文本，可在下方追加图片做图文混合检索"
+          placeholder="输入文字搜索，或点击右侧图片按钮上传图片"
+          clearable
           class="primary-search-input"
-        />
-        <el-button
-          type="primary"
-          size="large"
-          class="primary-search-button"
-          :loading="searchLoading"
-          @click="handleHybridSearch"
+          @keyup.enter="handleHybridSearch"
         >
-          搜索
-        </el-button>
+          <template #suffix>
+            <el-upload
+              class="hybrid-upload-button"
+              :show-file-list="false"
+              :http-request="handleHybridImageUpload"
+              accept="image/*"
+            >
+              <el-button :icon="Picture" circle text title="上传图片搜索" />
+            </el-upload>
+          </template>
+          <template #append>
+            <el-button type="primary" :loading="searchLoading" @click="handleHybridSearch">搜索</el-button>
+          </template>
+        </el-input>
+        <div v-if="uploadedImagePreviewUrl" class="hybrid-image-preview">
+          <el-image :src="uploadedImagePreviewUrl" fit="cover" />
+          <span>已用上传图片检索，可继续输入文字或换图</span>
+        </div>
         <el-collapse class="more-options">
           <el-collapse-item title="更多选项">
             <div class="options-grid">
-              <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选，图文混合）" clearable />
+              <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选）" clearable />
               <el-input-number v-model="hybridForm.topK" :min="1" :max="100" />
             </div>
             <div class="switch-row">
-              <el-switch v-model="hybridForm.enableEs" active-text="ES" />
-              <el-switch v-model="hybridForm.enableMilvus" active-text="Milvus" />
-              <el-switch v-model="hybridForm.enableNeo4j" active-text="Neo4j" />
+              <el-switch v-model="hybridForm.enableEs" active-text="关键词召回" />
+              <el-switch v-model="hybridForm.enableMilvus" active-text="语义召回" />
+              <el-switch v-model="hybridForm.enableNeo4j" active-text="图谱扩展" />
             </div>
             <el-radio-group v-model="hybridForm.targetModalities" class="mt-sm">
-              <el-radio label="all">跨模态：all</el-radio>
-              <el-radio label="text">text</el-radio>
-              <el-radio label="image">image</el-radio>
+              <el-radio value="all">全部结果</el-radio>
+              <el-radio value="text">只看贴文</el-radio>
+              <el-radio value="image">只看图片</el-radio>
             </el-radio-group>
           </el-collapse-item>
         </el-collapse>
@@ -315,7 +323,7 @@
               v-if="!searchLoading && !results.length && !resultImageItems.length"
               description="暂无检索结果"
             />
-            <div v-else-if="isHybridImageResult" class="image-result-grid">
+            <div v-else-if="isImageResultGrid" class="image-result-grid">
               <el-card
                 v-for="image in resultImageItems"
                 :key="image.assetId"
@@ -379,24 +387,24 @@
                     <el-tag effect="plain">{{ item.contentType || '-' }}</el-tag>
                     <el-tooltip
                       v-if="getContentScore(item.id) !== null"
-                      content="ES 关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
+                      content="关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
                       placement="top"
                     >
-                      <el-tag type="warning" effect="plain">相关度 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
+                      <el-tag type="warning" effect="plain">关键词 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
                     </el-tooltip>
                     <el-tooltip
                       v-if="getSimilarityScore(item.id) !== null"
-                      content="Milvus 向量语义相似度（余弦相似度），越接近1越相似"
+                      content="向量语义相似度，越接近1越相似"
                       placement="top"
                     >
-                      <el-tag type="success" effect="plain">相似度 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
+                      <el-tag type="success" effect="plain">语义 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
                     </el-tooltip>
                     <el-tooltip
                       v-if="getFusionScore(item.id) !== null"
                       content="多路检索融合（RRF）后的综合排序分数，决定了智能融合模式的最终排序，本身没有绝对意义"
                       placement="top"
                     >
-                      <el-tag type="primary" effect="plain">融合分 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
+                      <el-tag type="primary" effect="plain">综合排序 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
                     </el-tooltip>
                   </div>
                   <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
@@ -737,7 +745,9 @@ const resultMeta = reactive({
   durationMs: 0,
   searchType: ''
 })
-const isHybridImageResult = computed(() => resultMeta.searchType === 'hybrid-image')
+const isImageResultGrid = computed(() =>
+  resultImageItems.value.length > 0 && ['hybrid-image', 'image'].includes(resultMeta.searchType)
+)
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
@@ -953,6 +963,27 @@ const handleHybridSearch = async () => {
       }),
     'hybrid'
   )
+}
+
+const handleHybridImageUpload = async (options: UploadRequestOptions) => {
+  clearUploadedImagePreview()
+  uploadedImagePreviewUrl.value = URL.createObjectURL(options.file as File)
+
+  const formData = new FormData()
+  formData.append('file', options.file)
+  formData.append('topK', String(hybridForm.topK))
+  formData.append('targetModalities', hybridForm.targetModalities)
+  searchLoading.value = true
+  try {
+    const result = await searchByImageUpload(formData)
+    applySearchResult(result, 'image')
+    options.onSuccess?.(result)
+  } catch (error) {
+    ElMessage.error('图片上传检索失败')
+    options.onError?.(error as any)
+  } finally {
+    searchLoading.value = false
+  }
 }
 
 const handleImageUrlSearch = async () => {
@@ -1442,6 +1473,34 @@ const graphOption = computed(() => {
   display: block;
   width: 100%;
   margin-top: 12px;
+}
+
+.hybrid-upload-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.hybrid-upload-button :deep(.el-upload) {
+  display: inline-flex;
+  align-items: center;
+}
+
+.hybrid-image-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.hybrid-image-preview :deep(.el-image) {
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
 }
 
 .image-source-switcher {
