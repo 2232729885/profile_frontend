@@ -250,142 +250,145 @@
           </div>
           <div v-else v-loading="searchLoading" class="result-body">
             <el-empty
-              v-if="!searchLoading && !results.length && !resultImageItems.length"
+              v-if="!searchLoading && !resultContentHits.length"
               description="暂无检索结果"
             />
             <div v-else class="mixed-result-layout">
-              <section v-if="resultImageItems.length" class="image-results-section">
-                <div class="result-section-header">
-                  <span>匹配图片</span>
-                  <span>点击图片查看所属贴文</span>
-                </div>
-                <div class="image-result-grid">
-                  <el-card
-                    v-for="image in resultImageItems"
-                    :key="image.assetId"
-                    class="image-result-card"
-                    shadow="hover"
-                    @click="openContentDetailById(image.contentId)"
-                  >
-                    <div class="image-result-card__thumb">
-                      <el-image :src="buildImageResultUrl(image)" fit="cover">
-                        <template #error>
+              <div v-if="resultContentHits.length" class="result-list">
+                <el-card
+                  v-for="hit in resultContentHits"
+                  :key="hit.contentId"
+                  :class="['result-card', 'content-hit-card', `content-hit-card--${hit.displaySuggestion?.toLowerCase() || 'text_first'}`]"
+                  shadow="hover"
+                  @click="openContentDetailById(hit.contentId)"
+                >
+                  <div class="content-hit-layout">
+                    <div
+                      v-if="hit.primaryAsset && hit.displaySuggestion === 'MEDIA_FIRST'"
+                      class="content-hit-media content-hit-media--lead"
+                    >
+                      <div class="content-hit-media__label">
+                        {{ mediaTypeLabel(hit.primaryAsset.mediaType) }}命中
+                      </div>
+                      <component
+                        :is="mediaPreviewComponent(hit.primaryAsset)"
+                        v-bind="mediaPreviewProps(hit.primaryAsset)"
+                        class="content-hit-media__preview"
+                        controls
+                        preload="metadata"
+                        fit="cover"
+                      >
+                        <template v-if="isImageAsset(hit.primaryAsset)" #error>
                           <div class="asset-error">
                             <el-icon><Picture /></el-icon>
-                            <span>图片加载失败</span>
+                            <span>媒体加载失败</span>
                           </div>
                         </template>
-                      </el-image>
-                    </div>
-                    <div class="image-result-card__meta">
-                      <div class="tag-group">
-                        <el-tag size="small" :type="platformTagType(image.platform)">{{ image.platform || '-' }}</el-tag>
-                        <el-tag v-if="image.similarityScore !== undefined" size="small" type="success" effect="plain">
-                          相似度 {{ image.similarityScore.toFixed(3) }}
-                        </el-tag>
-                      </div>
-                      <div class="image-result-card__title">
-                        {{ image.contentTitle || image.contentBodyText || '无标题内容' }}
-                      </div>
-                      <div class="image-result-card__caption">
-                        {{ image.contentBodyText || '点击查看所属贴文' }}
+                      </component>
+                      <div v-if="formatSegment(hit.primaryAsset)" class="content-hit-media__segment">
+                        {{ formatSegment(hit.primaryAsset) }}
                       </div>
                     </div>
-                  </el-card>
-                </div>
-              </section>
-              <div v-if="results.length" class="result-list">
-                <el-alert
-                  v-if="resultMeta.searchType === 'image' && !resultImageItems.length"
-                  style="margin-bottom: 12px"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                >
-                  <template #title>
-                    以图搜索结果（共 {{ resultMeta.total }} 条）
-                  </template>
-                  <template #default>
-                    结果包含「以图搜文」（图像语义匹配的文字内容）和「以图搜图」（相似图片内容）两类。
-                    当前数据集中图片资产较少，主要结果来自以图搜文。
-                  </template>
-                </el-alert>
-                <el-card
-                  v-for="item in results"
-                  :key="item.id"
-                  class="result-card"
-                  shadow="hover"
-                  @click="openContentDetail(item)"
-                >
-                  <div class="result-card__meta">
-                    <div class="tag-group">
-                      <el-tag :type="platformTagType(item.platform)">{{ item.platform || '-' }}</el-tag>
-                      <el-tag type="info">{{ item.language || '-' }}</el-tag>
-                      <el-tag effect="plain">{{ item.contentType || '-' }}</el-tag>
-                      <el-tooltip
-                        v-if="getContentScore(item.id) !== null"
-                        content="关键词匹配得分，仅用于同一次检索内部参考，不同检索模式之间的分值不可比较"
-                        placement="top"
+
+                    <div class="content-hit-main">
+                      <div class="result-card__meta">
+                        <div class="tag-group">
+                          <el-tag :type="platformTagType(contentHitPost(hit)?.platform)">{{ contentHitPost(hit)?.platform || '-' }}</el-tag>
+                          <el-tag type="info">{{ contentHitPost(hit)?.language || '-' }}</el-tag>
+                          <el-tag effect="plain">{{ contentHitPost(hit)?.contentType || '-' }}</el-tag>
+                          <el-tag :type="displaySuggestionTagType(hit.displaySuggestion)" effect="plain">
+                            {{ displaySuggestionLabel(hit.displaySuggestion) }}
+                          </el-tag>
+                          <el-tooltip content="文本侧 RRF 贡献占比" placement="top">
+                            <el-tag effect="plain">文本 {{ formatRatio(hit.contribution?.text?.ratio) }}</el-tag>
+                          </el-tooltip>
+                          <el-tooltip content="媒体侧 RRF 贡献占比" placement="top">
+                            <el-tag type="success" effect="plain">媒体 {{ formatRatio(hit.contribution?.media?.ratio) }}</el-tag>
+                          </el-tooltip>
+                          <el-tooltip content="融合后的相对相关度" placement="top">
+                            <el-tag type="primary" effect="plain">相关 {{ formatScore(hit.rrfScore ?? 0) }}</el-tag>
+                          </el-tooltip>
+                        </div>
+                        <span class="muted-text">{{ formatTime(contentHitPost(hit)?.publishedAt || contentHitPost(hit)?.publishTime || contentHitPost(hit)?.createdAt) }}</span>
+                      </div>
+
+                      <div v-if="contentHitTitle(hit)" class="content-hit-title">
+                        {{ contentHitTitle(hit) }}
+                      </div>
+
+                      <div
+                        class="body-text"
+                        :class="{ collapsed: !getHighlight(hit.contentId) && !isExpanded(hit.contentId) && contentHitBodyText(hit).length > 200 }"
                       >
-                        <el-tag type="warning" effect="plain">关键词 {{ getContentScore(item.id)?.toFixed(2) }}</el-tag>
-                      </el-tooltip>
-                      <el-tooltip
-                        v-if="getSimilarityScore(item.id) !== null"
-                        content="向量语义相似度，越接近1越相似"
-                        placement="top"
+                        <template v-if="getHighlight(hit.contentId)">
+                          <span
+                            v-for="(fragment, idx) in getHighlight(hit.contentId)"
+                            :key="idx"
+                            v-html="fragment"
+                            class="highlight-fragment"
+                          />
+                        </template>
+                        <template v-else>
+                          {{ displayContentHitBodyText(hit) }}
+                        </template>
+                      </div>
+                      <el-button
+                        v-if="!getHighlight(hit.contentId) && contentHitBodyText(hit).length > 200"
+                        link
+                        type="primary"
+                        @click.stop="toggleExpanded(hit.contentId)"
                       >
-                        <el-tag type="success" effect="plain">语义 {{ getSimilarityScore(item.id)?.toFixed(3) }}</el-tag>
-                      </el-tooltip>
-                      <el-tooltip
-                        v-if="getFusionScore(item.id) !== null"
-                        content="多路检索融合（RRF）后的综合排序分数，决定了智能融合模式的最终排序，本身没有绝对意义"
-                        placement="top"
-                      >
-                        <el-tag type="primary" effect="plain">综合排序 {{ getFusionScore(item.id)?.toFixed(4) }}</el-tag>
-                      </el-tooltip>
+                        {{ isExpanded(hit.contentId) ? '收起' : '展开' }}
+                      </el-button>
+
+                      <div v-if="hit.primaryAsset && hit.displaySuggestion !== 'MEDIA_FIRST'" class="content-hit-inline-media">
+                        <div class="content-hit-inline-media__thumb">
+                          <component
+                            :is="mediaPreviewComponent(hit.primaryAsset)"
+                            v-bind="mediaPreviewProps(hit.primaryAsset)"
+                            controls
+                            preload="metadata"
+                            fit="cover"
+                          />
+                        </div>
+                        <div>
+                          <div class="content-hit-inline-media__title">
+                            {{ mediaEvidenceLabel(hit.primaryAsset, hit.evidences) }}
+                          </div>
+                          <div class="muted-text">{{ formatSegment(hit.primaryAsset) || '点击查看所属贴文详情' }}</div>
+                        </div>
+                      </div>
+
+                      <div class="content-hit-evidence">
+                        <span v-for="evidence in hit.evidences.slice(0, 4)" :key="`${evidence.channel}-${evidence.rank}-${evidence.entityId || evidence.contentId}`">
+                          {{ evidenceLabel(evidence) }}
+                        </span>
+                      </div>
+
+                      <div class="result-card__stats">
+                        <span>作者：@{{ contentHitPost(hit)?.authorPlatformUserId || '-' }}</span>
+                        <span>赞 {{ contentHitPost(hit)?.likeCount ?? 0 }}</span>
+                        <span>评 {{ contentHitPost(hit)?.commentCount ?? 0 }}</span>
+                        <span>转 {{ contentHitPost(hit)?.repostCount ?? 0 }}</span>
+                      </div>
+
+                      <div class="result-card__footer">
+                        <div class="hashtag-list">
+                          <el-tag v-for="tag in getHashtags(contentHitPost(hit) || emptyContent)" :key="tag" size="small" type="info" effect="plain">#{{ tag }}</el-tag>
+                          <span v-if="hit.matchedAssets?.length" class="media-count">
+                            <el-icon><Picture /></el-icon>
+                            {{ hit.matchedAssets.length }} 个命中媒体
+                          </span>
+                        </div>
+                        <div>
+                          <el-button size="small" :disabled="!contentHitPost(hit)?.authorAccountId" @click.stop="goAuthorProfile(contentHitPost(hit) || emptyContent)">查看画像</el-button>
+                          <el-button size="small" type="primary" :disabled="!hit.contentId" @click.stop="openGraphDialog('MediaContent', hit.contentId, contentHitTitle(hit) || contentHitBodyText(hit).slice(0, 20))">查看图谱</el-button>
+                        </div>
+                      </div>
                     </div>
-                    <span class="muted-text">{{ formatTime(item.publishTime || item.createdAt) }}</span>
                   </div>
-
-                <div class="body-text" :class="{ collapsed: !getHighlight(item.id) && !isExpanded(item.id) && getBodyText(item).length > 200 }">
-                  <template v-if="getHighlight(item.id)">
-                    <span
-                      v-for="(fragment, idx) in getHighlight(item.id)"
-                      :key="idx"
-                      v-html="fragment"
-                      class="highlight-fragment"
-                    />
-                  </template>
-                  <template v-else>
-                    {{ displayBodyText(item) }}
-                  </template>
-                </div>
-                <el-button v-if="!getHighlight(item.id) && getBodyText(item).length > 200" link type="primary" @click.stop="toggleExpanded(item.id)">
-                  {{ isExpanded(item.id) ? '收起' : '展开' }}
-                </el-button>
-
-                <div class="result-card__stats">
-                  <span>作者：@{{ item.authorPlatformUserId || '-' }}</span>
-                  <span>赞 {{ item.likeCount ?? 0 }}</span>
-                  <span>评 {{ item.commentCount ?? 0 }}</span>
-                  <span>转 {{ item.repostCount ?? 0 }}</span>
-                </div>
-
-                <div class="result-card__footer">
-                  <div class="hashtag-list">
-                    <el-tag v-for="tag in getHashtags(item)" :key="tag" size="small" type="info" effect="plain">#{{ tag }}</el-tag>
-                    <span v-if="item.mediaAssetIds?.length" class="media-count">
-                      <el-icon><Picture /></el-icon>
-                      {{ item.mediaAssetIds.length }} 张图片
-                    </span>
-                  </div>
-                  <div>
-                    <el-button size="small" :disabled="!item.authorAccountId" @click.stop="goAuthorProfile(item)">查看画像</el-button>
-                    <el-button size="small" type="primary" :disabled="!item.id" @click.stop="openGraphDialog('MediaContent', item.id, getBodyText(item).slice(0, 20))">查看图谱</el-button>
-                  </div>
-                </div>
-              </el-card>
-            </div>
+                </el-card>
+              </div>
             <el-pagination
               v-if="showContentPagination"
               class="result-pagination"
@@ -545,15 +548,11 @@ type TargetModality = 'all' | 'text' | 'image'
 type ContentSearchReplay = 'content' | 'content-upload'
 
 interface SearchResult {
-  items: MediaContent[]
-  imageItems?: ImageResultItem[]
+  contentHits?: ContentHit[]
   total: number
   durationMs: number
   searchType: string
   highlights?: Record<string, Record<string, string[]>>
-  scores?: Record<string, number>
-  similarityScores?: Record<string, number>
-  fusionScores?: Record<string, number>
 }
 
 interface MediaContent {
@@ -561,6 +560,7 @@ interface MediaContent {
   platform?: string
   language?: string
   contentType?: string
+  title?: string
   publishedAt?: string
   publishTime?: string
   createdAt?: string
@@ -614,9 +614,22 @@ interface EntityResult {
   canOpenGraph: boolean
 }
 
-interface ImageResultItem {
-  assetId: string
-  contentId: string
+interface ContributionSide {
+  rrfScore?: number
+  ratio?: number
+}
+
+interface ContentContribution {
+  text?: ContributionSide
+  media?: ContributionSide
+}
+
+interface AssetHit {
+  entityId?: string
+  assetId?: string
+  contentId?: string
+  mediaType?: string
+  previewUrl?: string
   sourceUrl?: string
   storageUri?: string
   minioBucket?: string
@@ -624,13 +637,34 @@ interface ImageResultItem {
   mimeType?: string
   width?: number
   height?: number
-  similarityScore?: number
-  platform?: string
-  language?: string
-  contentType?: string
-  contentTitle?: string
-  contentBodyText?: string
-  publishedAt?: string
+  segmentStartMs?: number
+  segmentEndMs?: number
+  previewTimeMs?: number
+  rrfContribution?: number
+}
+
+interface SearchEvidence {
+  channel: string
+  category: string
+  rank?: number
+  rrfContribution?: number
+  rawScore?: number
+  hitField?: string
+  contentId?: string
+  assetId?: string
+  entityId?: string
+}
+
+interface ContentHit {
+  contentId: string
+  rrfScore?: number
+  dominantHitType?: 'TEXT' | 'MEDIA_ASSET' | 'MIXED' | string
+  displaySuggestion?: 'TEXT_FIRST' | 'MEDIA_FIRST' | 'MIXED' | string
+  contribution?: ContentContribution
+  primaryAsset?: AssetHit | null
+  matchedAssets?: AssetHit[]
+  evidences: SearchEvidence[]
+  post?: MediaContent | null
 }
 
 interface SocialAccountResult {
@@ -675,16 +709,12 @@ const graphDialogReady = ref(false)
 const contentDetailVisible = ref(false)
 const contentDetailLoading = ref(false)
 const contentDetail = ref<ContentDetail | null>(null)
-const results = ref<MediaContent[]>([])
-const resultImageItems = ref<ImageResultItem[]>([])
+const resultContentHits = ref<ContentHit[]>([])
 const contentPage = ref(0)
 const contentPageSize = ref(10)
 const lastContentSearchKind = ref<ContentSearchReplay | null>(null)
 const lastUploadedSearchFile = ref<File | null>(null)
 const resultHighlights = ref<Record<string, Record<string, string[]>>>({})
-const resultScores = ref<Record<string, number>>({})
-const resultSimilarityScores = ref<Record<string, number>>({})
-const resultFusionScores = ref<Record<string, number>>({})
 const expandedIds = ref<Set<string>>(new Set())
 const entityResults = ref<EntityResult[]>([])
 const graphData = ref<GraphData>({ nodes: [], relations: [] })
@@ -707,6 +737,8 @@ const accountTypeOptions = [
   'commercial_brand', 'platform_official', 'influencer_kol', 'community_group',
   'anonymous_account', 'suspected_bot_or_automated', 'unknown', 'other'
 ]
+
+const emptyContent: MediaContent = { id: '' }
 
 const accountResults = ref<SocialAccountResult[]>([])
 const accountResultMeta = reactive({
@@ -747,40 +779,31 @@ const clearUploadedImagePreview = () => {
 
 const normalizeResult = (result: unknown, fallbackType: string): SearchResult => {
   if (Array.isArray(result)) {
-    return { items: result as MediaContent[], total: result.length, durationMs: 0, searchType: fallbackType }
+    return { contentHits: [], total: result.length, durationMs: 0, searchType: fallbackType }
   }
   const data = result as Partial<SearchResult>
-  const items = data.items ?? []
+  const contentHits = data.contentHits ?? []
   return {
-    items,
-    imageItems: data.imageItems ?? [],
-    total: data.total ?? items.length,
+    contentHits,
+    total: data.total ?? contentHits.length,
     durationMs: data.durationMs ?? 0,
     searchType: data.searchType ?? fallbackType,
-    highlights: data.highlights,
-    scores: data.scores,
-    similarityScores: data.similarityScores,
-    fusionScores: data.fusionScores
+    highlights: data.highlights
   }
 }
 
 const applySearchResult = (result: unknown, fallbackType: string) => {
   const normalized = normalizeResult(result, fallbackType)
-  results.value = normalized.items
-  resultImageItems.value = normalized.imageItems ?? []
+  resultContentHits.value = normalized.contentHits ?? []
   resultMeta.total = normalized.total
   resultMeta.durationMs = normalized.durationMs
   resultMeta.searchType = normalized.searchType
   resultHighlights.value = normalized.highlights ?? {}
-  resultScores.value = normalized.scores ?? {}
-  resultSimilarityScores.value = normalized.similarityScores ?? {}
-  resultFusionScores.value = normalized.fusionScores ?? {}
   expandedIds.value = new Set()
 }
 
 const clearResults = () => {
-  results.value = []
-  resultImageItems.value = []
+  resultContentHits.value = []
   contentPage.value = 0
   lastContentSearchKind.value = null
   lastUploadedSearchFile.value = null
@@ -788,9 +811,6 @@ const clearResults = () => {
   resultMeta.durationMs = 0
   resultMeta.searchType = ''
   resultHighlights.value = {}
-  resultScores.value = {}
-  resultSimilarityScores.value = {}
-  resultFusionScores.value = {}
   expandedIds.value = new Set()
 }
 
@@ -1035,28 +1055,7 @@ const getHighlight = (contentId: string): string[] | null => {
   return highlight.body_text ?? highlight.title ?? null
 }
 
-const getContentScore = (contentId: string): number | null => {
-  const score = resultScores.value[contentId]
-  return score === undefined ? null : score
-}
-
-const getSimilarityScore = (contentId: string): number | null => {
-  const score = resultSimilarityScores.value[contentId]
-  return score === undefined ? null : score
-}
-
-const getFusionScore = (contentId: string): number | null => {
-  const score = resultFusionScores.value[contentId]
-  return score === undefined ? null : score
-}
-
 const isExpanded = (id: string) => expandedIds.value.has(id)
-
-const displayBodyText = (item: MediaContent) => {
-  const text = getBodyText(item)
-  if (text.length <= 200 || isExpanded(item.id)) return text
-  return `${text.slice(0, 200)}...`
-}
 
 const toggleExpanded = (id: string) => {
   const next = new Set(expandedIds.value)
@@ -1081,10 +1080,6 @@ const goAuthorProfile = (item: MediaContent) => {
   router.push({ path: '/profiles', query: { authorAccountId: item.authorAccountId } })
 }
 
-const openContentDetail = async (item: MediaContent) => {
-  await openContentDetailById(item.id)
-}
-
 const openContentDetailById = async (contentId?: string) => {
   if (!contentId) return
   contentDetailVisible.value = true
@@ -1106,11 +1101,156 @@ const buildAssetUrl = (asset: MediaAsset): string => {
   return asset.sourceUrl || ''
 }
 
-const buildImageResultUrl = (image: ImageResultItem): string => {
-  if (image.minioKey && image.minioBucket) {
-    return `http://172.16.40.232:9000/${image.minioBucket}/${image.minioKey}`
+const contentHitPost = (hit: ContentHit): MediaContent | null => {
+  return hit.post ?? null
+}
+
+const contentHitTitle = (hit: ContentHit): string => {
+  const post = contentHitPost(hit)
+  return post?.title || ''
+}
+
+const contentHitBodyText = (hit: ContentHit): string => {
+  const post = contentHitPost(hit)
+  return post ? getBodyText(post) : ''
+}
+
+const displayContentHitBodyText = (hit: ContentHit): string => {
+  const text = contentHitBodyText(hit)
+  if (text.length <= 200 || isExpanded(hit.contentId)) return text
+  return `${text.slice(0, 200)}...`
+}
+
+const formatRatio = (ratio?: number): string => {
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return '-'
+  return `${Math.round(ratio * 100)}%`
+}
+
+const displaySuggestionLabel = (suggestion?: string): string => {
+  if (suggestion === 'MEDIA_FIRST') return '媒体优先'
+  if (suggestion === 'MIXED') return '混合命中'
+  return '贴文优先'
+}
+
+const displaySuggestionTagType = (suggestion?: string) => {
+  if (suggestion === 'MEDIA_FIRST') return 'success'
+  if (suggestion === 'MIXED') return 'warning'
+  return 'info'
+}
+
+const mediaTypeLabel = (mediaType?: string): string => {
+  const normalized = mediaType?.toLowerCase()
+  if (normalized === 'video') return '视频'
+  if (normalized === 'audio') return '音频'
+  if (normalized === 'image') return '图片'
+  return '媒体'
+}
+
+const buildAssetHitUrl = (asset?: AssetHit | null): string => {
+  if (!asset) return ''
+  if (asset.minioKey && asset.minioBucket) {
+    return `http://172.16.40.232:9000/${asset.minioBucket}/${asset.minioKey}`
   }
-  return image.sourceUrl || image.storageUri || ''
+  return asset.sourceUrl || asset.previewUrl || asset.storageUri || ''
+}
+
+const withMediaTimeFragment = (url: string, asset?: AssetHit | null): string => {
+  if (!url || !asset?.previewTimeMs || isImageAsset(asset)) return url
+  const seconds = Math.max(0, Math.floor(asset.previewTimeMs / 1000))
+  const cleanUrl = url.split('#')[0]
+  return `${cleanUrl}#t=${seconds}`
+}
+
+const mediaPreviewUrl = (asset?: AssetHit | null): string => {
+  const url = buildAssetHitUrl(asset)
+  return withMediaTimeFragment(url, asset)
+}
+
+const isImageAsset = (asset?: AssetHit | null): boolean => {
+  const type = asset?.mediaType?.toLowerCase()
+  return type === 'image' || Boolean(asset?.mimeType?.startsWith('image/'))
+}
+
+const isVideoAsset = (asset?: AssetHit | null): boolean => {
+  const type = asset?.mediaType?.toLowerCase()
+  return type === 'video' || Boolean(asset?.mimeType?.startsWith('video/'))
+}
+
+const isAudioAsset = (asset?: AssetHit | null): boolean => {
+  const type = asset?.mediaType?.toLowerCase()
+  return type === 'audio' || Boolean(asset?.mimeType?.startsWith('audio/'))
+}
+
+const mediaPreviewComponent = (asset?: AssetHit | null): string => {
+  if (isImageAsset(asset)) return 'el-image'
+  if (isVideoAsset(asset)) return 'video'
+  if (isAudioAsset(asset)) return 'audio'
+  return 'div'
+}
+
+const mediaPreviewProps = (asset?: AssetHit | null): Record<string, unknown> => {
+  const src = mediaPreviewUrl(asset)
+  if (isImageAsset(asset)) {
+    return { src, fit: 'cover' }
+  }
+  if (isVideoAsset(asset) || isAudioAsset(asset)) {
+    return { src }
+  }
+  return {}
+}
+
+const formatSegment = (asset?: AssetHit | null): string => {
+  if (!asset?.segmentStartMs && !asset?.segmentEndMs) return ''
+  const start = formatMillis(asset.segmentStartMs)
+  const end = formatMillis(asset.segmentEndMs)
+  if (start && end) return `${start} - ${end}`
+  return start || end
+}
+
+const formatMillis = (value?: number): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+  const totalSeconds = Math.max(0, Math.floor(value / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[] = []): string => {
+  const related = evidences.find(evidence =>
+    evidence.category === 'MEDIA' &&
+    (evidence.entityId === asset?.entityId || evidence.assetId === asset?.assetId)
+  )
+  if (related?.channel === 'ES_MEDIA_KEYWORD') {
+    if (isAudioAsset(asset)) return '音频转写命中'
+    if (isVideoAsset(asset)) return '视频文字命中'
+    return '图片文字命中'
+  }
+  if (related?.channel === 'MILVUS_MEDIA_SEMANTIC') {
+    if (related.hitField === 'visual_embedding') return '画面语义相关'
+    if (related.hitField === 'asr_embedding') return '音频语义相关'
+    if (related.hitField === 'caption_embedding') return '媒体描述相关'
+    if (related.hitField === 'ocr_embedding') return '图片文字语义相关'
+  }
+  return `${mediaTypeLabel(asset?.mediaType)}资源命中`
+}
+
+const evidenceLabel = (evidence: SearchEvidence): string => {
+  if (evidence.channel === 'ES_POST_KEYWORD') return '命中正文'
+  if (evidence.channel === 'MILVUS_POST_SEMANTIC') return '贴文语义相关'
+  if (evidence.channel === 'NEO4J_GRAPH') return '实体关联'
+  if (evidence.channel === 'ES_MEDIA_KEYWORD') {
+    return evidence.hitField?.includes('asr') ? '音频转写命中' : '媒体文字命中'
+  }
+  if (evidence.channel === 'MILVUS_MEDIA_SEMANTIC') {
+    const fieldLabels: Record<string, string> = {
+      visual_embedding: '画面语义相关',
+      ocr_embedding: '图片文字语义相关',
+      asr_embedding: '音频语义相关',
+      caption_embedding: '媒体描述相关'
+    }
+    return fieldLabels[evidence.hitField || ''] || '媒体语义相关'
+  }
+  return evidence.channel
 }
 
 const imageAssetUrls = (assets: MediaAsset[]): string[] =>
@@ -1546,85 +1686,9 @@ const graphOption = computed(() => {
   gap: 18px;
 }
 
-.image-results-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.result-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.result-section-header span:last-child {
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 400;
-}
-
 .result-pagination {
   justify-content: flex-end;
   margin-top: 4px;
-}
-
-.image-result-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
-}
-
-.image-result-card {
-  cursor: pointer;
-  overflow: hidden;
-}
-
-.image-result-card :deep(.el-card__body) {
-  padding: 0;
-}
-
-.image-result-card__thumb {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  background: #f3f4f6;
-}
-
-.image-result-card__thumb :deep(.el-image) {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.image-result-card__meta {
-  padding: 10px;
-}
-
-.image-result-card__title {
-  margin-top: 8px;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.image-result-card__caption {
-  margin-top: 6px;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .entity-result-grid {
@@ -1709,6 +1773,122 @@ const graphOption = computed(() => {
 .result-card {
   border-radius: 8px;
   cursor: pointer;
+}
+
+.content-hit-card :deep(.el-card__body) {
+  padding: 16px;
+}
+
+.content-hit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.content-hit-card--media_first .content-hit-layout {
+  grid-template-columns: minmax(220px, 32%) minmax(0, 1fr);
+  align-items: start;
+}
+
+.content-hit-media {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f3f4f6;
+}
+
+.content-hit-media__label {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(17 24 39 / 72%);
+  color: #fff;
+  font-size: 12px;
+}
+
+.content-hit-media__preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 180px;
+  object-fit: cover;
+}
+
+.content-hit-media__preview:empty {
+  min-height: 180px;
+}
+
+.content-hit-media__segment {
+  padding: 7px 10px;
+  color: #4b5563;
+  font-size: 12px;
+  background: #fff;
+}
+
+.content-hit-main {
+  min-width: 0;
+}
+
+.content-hit-title {
+  margin-top: 10px;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.content-hit-inline-media {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.content-hit-inline-media__thumb {
+  width: 96px;
+  height: 72px;
+  flex: 0 0 96px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #eef2f7;
+}
+
+.content-hit-inline-media__thumb :deep(.el-image),
+.content-hit-inline-media__thumb video,
+.content-hit-inline-media__thumb audio {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.content-hit-inline-media__title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.content-hit-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.content-hit-evidence span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .result-card__meta,
@@ -1927,6 +2107,10 @@ const graphOption = computed(() => {
   }
 
   .options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .content-hit-card--media_first .content-hit-layout {
     grid-template-columns: 1fr;
   }
 }
