@@ -1,11 +1,11 @@
 ﻿<template>
   <div class="search-view">
     <div class="page-header">
-      <h1>综合检索</h1>
-    </div>
-
-    <div class="scope-switcher">
-      <el-radio-group v-model="activeMode" size="large" @change="handleModeChange">
+      <div>
+        <h1>综合检索</h1>
+        <p class="page-subtitle">跨平台检索文本、图片、音频和视频内容</p>
+      </div>
+      <el-radio-group v-model="activeMode" class="mode-tabs" size="large" @change="handleModeChange">
         <el-radio-button value="content">内容</el-radio-button>
         <el-radio-button value="account">账号</el-radio-button>
         <el-radio-button value="entity">实体</el-radio-button>
@@ -51,43 +51,88 @@
             title="搜索"
             aria-label="搜索"
             @click="handleHybridSearch"
-          />
+          >
+            搜索
+          </el-button>
         </div>
         <div v-if="uploadedImagePreviewUrl" class="hybrid-image-preview">
           <el-image :src="uploadedImagePreviewUrl" fit="cover" />
           <span>已用上传图片检索，可继续输入文字或换图</span>
         </div>
         <div class="content-filter-panel">
-          <div class="filter-row filter-row--fields">
-            <el-input v-model="hybridForm.imageUrl" placeholder="图片 URL（可选）" clearable />
+          <div class="filter-row filter-row--quick">
             <el-select v-model="hybridForm.platform" clearable placeholder="全部平台">
               <el-option v-for="platform in platformOptions" :key="platform" :label="platform" :value="platform" />
             </el-select>
             <el-select v-model="hybridForm.language" clearable placeholder="全部语言">
               <el-option v-for="language in languageOptions" :key="language" :label="language" :value="language" />
             </el-select>
-            <div class="option-control option-control--compact">
-              <span class="option-control__label">每页</span>
-              <el-input-number v-model="contentPageSize" :min="1" :max="100" controls-position="right" />
+            <el-button class="advanced-toggle" plain @click="advancedFilterVisible = !advancedFilterVisible">
+              高级筛选
+              <el-icon :class="['advanced-toggle__icon', { 'is-open': advancedFilterVisible }]"><ArrowDown /></el-icon>
+            </el-button>
+          </div>
+          <div class="filter-chip-row">
+            <span class="filter-chip-label">检索方式</span>
+            <div class="chip-group">
+              <button
+                type="button"
+                :class="['filter-chip', { 'is-active': hybridForm.enableEs }]"
+                :aria-pressed="hybridForm.enableEs"
+                @click="hybridForm.enableEs = !hybridForm.enableEs"
+              >
+                关键词
+              </button>
+              <button
+                type="button"
+                :class="['filter-chip', { 'is-active': hybridForm.enableMilvus }]"
+                :aria-pressed="hybridForm.enableMilvus"
+                @click="hybridForm.enableMilvus = !hybridForm.enableMilvus"
+              >
+                语义
+              </button>
+              <button
+                type="button"
+                :class="['filter-chip', { 'is-active': hybridForm.enableNeo4j }]"
+                :aria-pressed="hybridForm.enableNeo4j"
+                @click="hybridForm.enableNeo4j = !hybridForm.enableNeo4j"
+              >
+                实体关联
+              </button>
             </div>
           </div>
-          <div class="filter-row filter-row--controls">
-            <div class="option-control option-control--slider">
-              <span class="option-control__label">语义门槛 {{ hybridForm.semanticMinScore.toFixed(2) }}</span>
-              <el-slider v-model="hybridForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
-            </div>
-            <div class="switch-row">
-              <el-switch v-model="hybridForm.enableEs" active-text="关键词" />
-              <el-switch v-model="hybridForm.enableMilvus" active-text="语义" />
-              <el-switch v-model="hybridForm.enableNeo4j" active-text="实体关联" />
-            </div>
+          <div class="filter-chip-row">
+            <span class="filter-chip-label">内容类型</span>
             <el-radio-group v-model="hybridForm.targetModalities" class="target-radio-group">
               <el-radio-button value="all">全部</el-radio-button>
               <el-radio-button value="text">文本</el-radio-button>
               <el-radio-button value="image">图片</el-radio-button>
               <el-radio-button value="video">视频</el-radio-button>
+              <el-radio-button value="audio">音频</el-radio-button>
             </el-radio-group>
           </div>
+          <transition name="advanced-filter">
+            <div v-show="advancedFilterVisible" class="advanced-filter-panel">
+              <div class="threshold-group">
+                <div class="option-control option-control--slider">
+                  <span class="option-control__label">
+                    <span>语义相似度</span>
+                    <strong>{{ hybridForm.semanticMinScore.toFixed(2) }}</strong>
+                  </span>
+                  <el-slider v-model="hybridForm.semanticMinScore" :min="0" :max="1" :step="0.01" />
+                  <span class="option-control__hint">控制贴文、OCR 和语音文本的语义匹配精度</span>
+                </div>
+                <div class="option-control option-control--slider">
+                  <span class="option-control__label">
+                    <span>视觉相似度</span>
+                    <strong>{{ hybridForm.visualMinScore.toFixed(2) }}</strong>
+                  </span>
+                  <el-slider v-model="hybridForm.visualMinScore" :min="0" :max="1" :step="0.01" />
+                  <span class="option-control__hint">控制图片和视频画面的向量匹配精度</span>
+                </div>
+              </div>
+            </div>
+          </transition>
         </div>
       </div>
 
@@ -121,7 +166,9 @@
             title="搜索"
             aria-label="搜索"
             @click="handleAccountSearch"
-          />
+          >
+            搜索
+          </el-button>
         </div>
         <el-collapse class="more-options">
           <el-collapse-item title="更多选项">
@@ -168,7 +215,9 @@
             title="搜索"
             aria-label="搜索"
             @click="handleEntitySearch"
-          />
+          >
+            搜索
+          </el-button>
         </div>
         <el-collapse class="more-options">
           <el-collapse-item title="更多选项">
@@ -183,16 +232,33 @@
     <el-card class="result-panel" shadow="never">
           <template #header>
             <div v-if="activeMode === 'account'" class="result-header">
-              <span>共 {{ accountResultMeta.total }} 条结果，耗时 {{ accountResultMeta.durationMs }}ms</span>
-              <el-button size="small" @click="clearAccountResults">清空</el-button>
+              <span>{{ accountResultMeta.total }} 条结果 · {{ accountResultMeta.durationMs }}ms</span>
+              <div class="result-header__actions">
+                <el-button size="small" @click="clearAccountResults">清空</el-button>
+              </div>
             </div>
             <div v-else-if="activeMode === 'entity'" class="result-header">
-              <span>共 {{ entityResults.length }} 条结果</span>
-              <el-button size="small" @click="entityResults = []">清空</el-button>
+              <span>{{ entityResults.length }} 条结果</span>
+              <div class="result-header__actions">
+                <el-button size="small" @click="entityResults = []">清空</el-button>
+              </div>
             </div>
             <div v-else class="result-header">
-              <span>共 {{ resultMeta.total }} 条结果，耗时 {{ resultMeta.durationMs }}ms，检索类型：{{ resultMeta.searchType || '-' }}</span>
-              <el-button size="small" @click="clearResults">清空</el-button>
+              <span>{{ resultMeta.total }} 条结果 · {{ resultMeta.durationMs }}ms · {{ resultMeta.searchType || '待检索' }}</span>
+              <div class="result-header__actions">
+                <el-select
+                  :model-value="contentPageSize"
+                  size="small"
+                  class="page-size-select"
+                  @change="handleContentPageSizeChange"
+                >
+                  <el-option :value="10" label="每页 10 条" />
+                  <el-option :value="20" label="每页 20 条" />
+                  <el-option :value="50" label="每页 50 条" />
+                  <el-option :value="100" label="每页 100 条" />
+                </el-select>
+                <el-button size="small" @click="clearResults">清空</el-button>
+              </div>
             </div>
           </template>
           <div v-if="activeMode === 'account'" v-loading="searchLoading" class="result-body">
@@ -250,16 +316,36 @@
             </div>
           </div>
           <div v-else v-loading="searchLoading" class="result-body">
-            <el-empty
+            <div
               v-if="!searchLoading && !resultContentHits.length"
-              description="暂无检索结果"
-            />
+              class="search-empty-state"
+            >
+              <el-icon class="search-empty-state__icon"><Search /></el-icon>
+              <h2>{{ hasContentSearched ? '没有找到相关结果' : '开始一次综合检索' }}</h2>
+              <p>
+                {{
+                  hasContentSearched
+                    ? '尝试降低语义或视觉阈值，或减少平台、语言、内容类型等筛选条件。'
+                    : '输入关键词、完整句子，或上传一张图片，系统将同时检索文本和关联媒体资源。'
+                }}
+              </p>
+              <div v-if="!hasContentSearched" class="search-empty-state__examples">
+                <button type="button" @click="applyContentExample('霍尔木兹海峡油轮')">霍尔木兹海峡油轮</button>
+                <button type="button" @click="applyContentExample('电影票房下降')">电影票房下降</button>
+                <button type="button" @click="applyContentExample('Another pandemic release')">Another pandemic release</button>
+              </div>
+            </div>
             <div v-else class="mixed-result-layout">
               <div v-if="resultContentHits.length" class="result-list">
                 <el-card
                   v-for="hit in resultContentHits"
                   :key="hit.contentId"
-                  :class="['result-card', 'content-hit-card', `content-hit-card--${hit.displaySuggestion?.toLowerCase() || 'text_first'}`]"
+                  :class="[
+                    'result-card',
+                    'content-hit-card',
+                    `content-hit-card--${hit.displaySuggestion?.toLowerCase() || 'text_first'}`,
+                    mediaStrengthClass(hit)
+                  ]"
                   shadow="hover"
                   @click="openContentDetailById(hit.contentId)"
                 >
@@ -269,7 +355,7 @@
                       class="content-hit-media content-hit-media--lead"
                     >
                       <div class="content-hit-media__label">
-                        {{ mediaTypeLabel(hit.primaryAsset.mediaType) }}命中
+                        命中{{ mediaTypeLabel(hit.primaryAsset.mediaType) }}
                       </div>
                       <component
                         :is="mediaPreviewComponent(hit.primaryAsset)"
@@ -292,36 +378,29 @@
                     </div>
 
                     <div class="content-hit-main">
-                      <div class="result-card__meta">
-                        <div class="tag-group">
-                          <el-tag :type="platformTagType(contentHitPost(hit)?.platform)">{{ contentHitPost(hit)?.platform || '-' }}</el-tag>
-                          <el-tag type="info">{{ contentHitPost(hit)?.language || '-' }}</el-tag>
-                          <el-tag effect="plain">{{ contentHitPost(hit)?.contentType || '-' }}</el-tag>
-                          <el-tag :type="displaySuggestionTagType(hit.displaySuggestion)" effect="plain">
-                            {{ displaySuggestionLabel(hit.displaySuggestion) }}
-                          </el-tag>
-                          <el-tooltip content="文本侧 RRF 贡献占比" placement="top">
-                            <el-tag effect="plain">文本 {{ formatRatio(hit.contribution?.text?.ratio) }}</el-tag>
-                          </el-tooltip>
-                          <el-tooltip content="媒体侧 RRF 贡献占比" placement="top">
-                            <el-tag type="success" effect="plain">媒体 {{ formatRatio(hit.contribution?.media?.ratio) }}</el-tag>
-                          </el-tooltip>
-                          <el-tooltip content="融合后的相对相关度" placement="top">
-                            <el-tag type="primary" effect="plain">相关 {{ formatScore(hit.rrfScore ?? 0) }}</el-tag>
-                          </el-tooltip>
+                      <div class="content-hit-topline">
+                        <div class="content-hit-source">
+                          {{ contentHitSourceMeta(hit) }}
                         </div>
-                        <span class="muted-text">{{ formatTime(contentHitPost(hit)?.publishedAt || contentHitPost(hit)?.publishTime || contentHitPost(hit)?.createdAt) }}</span>
+                        <div class="content-hit-match-summary">
+                          <span class="match-chip match-chip--muted">{{ displaySuggestionLabel(hit.displaySuggestion) }}</span>
+                          <span v-if="dominantContributionLabel(hit)" class="match-chip match-chip--muted">{{ dominantContributionLabel(hit) }}</span>
+                          <span :class="['match-chip', relevanceClass(hit)]">{{ relevanceLabel(hit) }}</span>
+                        </div>
+                      </div>
+                      <div class="content-hit-time">
+                        {{ formatTime(contentHitPost(hit)?.publishedAt || contentHitPost(hit)?.publishTime || contentHitPost(hit)?.createdAt) }}
                       </div>
 
-                      <div v-if="contentHitTitle(hit)" class="content-hit-title">
-                        {{ contentHitTitle(hit) }}
+                      <div v-if="displayContentHitTitle(hit)" class="content-hit-title">
+                        {{ displayContentHitTitle(hit) }}
                       </div>
 
                       <div
                         class="body-text"
-                        :class="{ collapsed: !getHighlight(hit.contentId) && !isExpanded(hit.contentId) && contentHitBodyText(hit).length > 200 }"
+                        :class="{ collapsed: !isExpanded(hit.contentId) && shouldCollapseContentHit(hit) }"
                       >
-                        <template v-if="getHighlight(hit.contentId)">
+                        <template v-if="getHighlight(hit.contentId) && !isExpanded(hit.contentId)">
                           <span
                             v-for="(fragment, idx) in getHighlight(hit.contentId)"
                             :key="idx"
@@ -334,7 +413,7 @@
                         </template>
                       </div>
                       <el-button
-                        v-if="!getHighlight(hit.contentId) && contentHitBodyText(hit).length > 200"
+                        v-if="shouldShowContentExpand(hit)"
                         link
                         type="primary"
                         @click.stop="toggleExpanded(hit.contentId)"
@@ -360,9 +439,14 @@
                         </div>
                       </div>
 
-                      <div class="content-hit-evidence">
-                        <span v-for="evidence in hit.evidences.slice(0, 4)" :key="`${evidence.channel}-${evidence.rank}-${evidence.entityId || evidence.contentId}`">
-                          {{ evidenceLabel(hit, evidence) }}
+                      <div v-if="evidenceSummaryLabels(hit).length || hit.matchedAssets?.length" class="content-hit-evidence-summary">
+                        <div v-if="evidenceSummaryLabels(hit).length" class="content-hit-evidence-summary__main">
+                          <el-icon><Search /></el-icon>
+                          <span>命中证据：{{ evidenceSummaryLabels(hit).join(' · ') }}</span>
+                        </div>
+                        <span v-if="hit.matchedAssets?.length" class="media-count">
+                          <el-icon><Picture /></el-icon>
+                          {{ hit.matchedAssets.length }} 个匹配媒体
                         </span>
                       </div>
 
@@ -376,14 +460,17 @@
                       <div class="result-card__footer">
                         <div class="hashtag-list">
                           <el-tag v-for="tag in getHashtags(contentHitPost(hit) || emptyContent)" :key="tag" size="small" type="info" effect="plain">#{{ tag }}</el-tag>
-                          <span v-if="hit.matchedAssets?.length" class="media-count">
-                            <el-icon><Picture /></el-icon>
-                            {{ hit.matchedAssets.length }} 个命中媒体
-                          </span>
                         </div>
-                        <div>
-                          <el-button size="small" :disabled="!contentHitPost(hit)?.authorAccountId" @click.stop="goAuthorProfile(contentHitPost(hit) || emptyContent)">查看画像</el-button>
-                          <el-button size="small" type="primary" :disabled="!hit.contentId" @click.stop="openGraphDialog('MediaContent', hit.contentId, contentHitTitle(hit) || contentHitBodyText(hit).slice(0, 20))">查看图谱</el-button>
+                        <div class="result-card__actions">
+                          <el-button
+                            v-if="hit.primaryAsset"
+                            size="small"
+                            @click.stop="openPrimaryAsset(hit)"
+                          >
+                            {{ primaryAssetActionLabel(hit) }}
+                          </el-button>
+                          <el-button size="small" @click.stop="openContentDetailById(hit.contentId)">查看详情</el-button>
+                          <el-button size="small" :disabled="!hit.contentId" @click.stop="openGraphDialog('MediaContent', hit.contentId, contentHitTitle(hit) || contentHitBodyText(hit).slice(0, 20))">查看图谱</el-button>
                         </div>
                       </div>
                     </div>
@@ -396,11 +483,9 @@
               background
               :current-page="contentPage + 1"
               :page-size="contentPageSize"
-              :page-sizes="[10, 20, 50, 100]"
               :total="resultMeta.total"
-              layout="total, sizes, prev, pager, next"
+              layout="prev, pager, next"
               @current-change="handleContentPageChange"
-              @size-change="handleContentPageSizeChange"
             />
             </div>
           </div>
@@ -534,7 +619,7 @@ import dayjs from 'dayjs'
 import VChart from 'vue-echarts'
 import type { UploadRequestOptions } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { Picture, Search, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowDown, Picture, Search, VideoPlay } from '@element-plus/icons-vue'
 import { getContentDetail } from '@/api/ingestion'
 import {
   searchAccounts,
@@ -545,7 +630,7 @@ import {
 } from '@/api/search'
 
 type SearchMode = 'content' | 'account' | 'entity'
-type TargetModality = 'all' | 'text' | 'image' | 'video'
+type TargetModality = 'all' | 'text' | 'image' | 'video' | 'audio'
 type ContentSearchReplay = 'content' | 'content-upload'
 
 interface SearchResult {
@@ -702,6 +787,7 @@ interface GraphData {
 const router = useRouter()
 const activeMode = ref<SearchMode>('content')
 const uploadedImagePreviewUrl = ref('')
+const advancedFilterVisible = ref(false)
 const searchLoading = ref(false)
 const entityLoading = ref(false)
 const graphLoading = ref(false)
@@ -727,6 +813,7 @@ const resultMeta = reactive({
 const showContentPagination = computed(() =>
   activeMode.value === 'content' && resultMeta.total > contentPageSize.value
 )
+const hasContentSearched = computed(() => Boolean(lastContentSearchKind.value))
 
 const platformOptions = ['x', 'telegram', 'youtube', 'news']
 const languageOptions = ['zh', 'en', 'fa', 'ar', 'vi']
@@ -761,14 +848,14 @@ const entityForm = reactive({
 
 const hybridForm = reactive({
   queryText: '',
-  imageUrl: '',
   platform: '',
   language: '',
   enableEs: true,
   enableMilvus: true,
   enableNeo4j: false,
   targetModalities: 'all' as TargetModality,
-  semanticMinScore: 0.45
+  semanticMinScore: 0.45,
+  visualMinScore: 0.9
 })
 
 const clearUploadedImagePreview = () => {
@@ -813,6 +900,11 @@ const clearResults = () => {
   resultMeta.searchType = ''
   resultHighlights.value = {}
   expandedIds.value = new Set()
+}
+
+const applyContentExample = (queryText: string) => {
+  hybridForm.queryText = queryText
+  handleHybridSearch()
 }
 
 const clearAccountResults = () => {
@@ -866,8 +958,8 @@ const runSearch = async (searcher: () => Promise<unknown>, fallbackType: string)
 const shouldResetPage = (resetPage: boolean | Event = true) => resetPage !== false
 
 const handleHybridSearch = async (resetPage: boolean | Event = true) => {
-  if (!hybridForm.queryText.trim() && !hybridForm.imageUrl.trim()) {
-    ElMessage.warning('请输入查询文本或图片 URL')
+  if (!hybridForm.queryText.trim()) {
+    ElMessage.warning('请输入查询文本')
     return
   }
   if (shouldResetPage(resetPage)) contentPage.value = 0
@@ -876,7 +968,6 @@ const handleHybridSearch = async (resetPage: boolean | Event = true) => {
     () =>
       searchHybrid({
         queryText: hybridForm.queryText.trim() || undefined,
-        imageUrl: hybridForm.imageUrl.trim() || undefined,
         platform: hybridForm.platform || undefined,
         language: hybridForm.language || undefined,
         page: contentPage.value,
@@ -885,7 +976,8 @@ const handleHybridSearch = async (resetPage: boolean | Event = true) => {
         enableMilvus: hybridForm.enableMilvus,
         enableNeo4j: hybridForm.enableNeo4j,
         targetModalities: hybridForm.targetModalities,
-        semanticMinScore: hybridForm.semanticMinScore
+        semanticMinScore: hybridForm.semanticMinScore,
+        visualMinScore: hybridForm.visualMinScore
       }),
     'hybrid'
   )
@@ -897,6 +989,7 @@ const fetchUploadedImageSearch = (file: File, targetModalities: TargetModality) 
   formData.append('targetModalities', targetModalities)
   formData.append('page', String(contentPage.value))
   formData.append('size', String(contentPageSize.value))
+  formData.append('visualMinScore', String(hybridForm.visualMinScore))
   return searchByImageUpload(formData)
 }
 
@@ -1116,10 +1209,62 @@ const contentHitBodyText = (hit: ContentHit): string => {
   return post ? getBodyText(post) : ''
 }
 
+const normalizePreviewText = (text: string): string =>
+  text
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const compactPreviewText = (text: string, maxLength: number): string => {
+  const normalized = normalizePreviewText(text)
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength).trim()}...`
+}
+
+const looksLikeLongTextTitle = (title: string): boolean => {
+  const normalized = normalizePreviewText(title)
+  return normalized.length > 80 || /https?:\/\//i.test(title) || normalized.split(/[，,。.\s]+/).length > 18
+}
+
+const isTextRepeated = (a: string, b: string): boolean => {
+  const left = normalizePreviewText(a)
+  const right = normalizePreviewText(b)
+  if (!left || !right) return false
+  return left === right || right.startsWith(left) || left.startsWith(right)
+}
+
+const displayContentHitTitle = (hit: ContentHit): string => {
+  const title = contentHitTitle(hit)
+  if (title && !looksLikeLongTextTitle(title)) return title
+  const source = title || contentHitBodyText(hit)
+  const shortTitle = compactPreviewText(source, 34)
+  return shortTitle || contentTypeLabel(contentHitPost(hit)?.contentType)
+}
+
 const displayContentHitBodyText = (hit: ContentHit): string => {
-  const text = contentHitBodyText(hit)
-  if (text.length <= 200 || isExpanded(hit.contentId)) return text
-  return `${text.slice(0, 200)}...`
+  const body = contentHitBodyText(hit)
+  if (isExpanded(hit.contentId)) return body
+  const title = contentHitTitle(hit)
+  let summary = body
+  if (title && isTextRepeated(title, body)) {
+    const normalizedBody = normalizePreviewText(body)
+    const normalizedTitle = normalizePreviewText(title)
+    summary = normalizedBody.startsWith(normalizedTitle)
+      ? normalizedBody.slice(normalizedTitle.length)
+      : normalizedBody
+  }
+  if (!normalizePreviewText(summary)) {
+    summary = body || title
+  }
+  return compactPreviewText(summary, 180)
+}
+
+const shouldCollapseContentHit = (hit: ContentHit): boolean => {
+  return contentHitBodyText(hit).length > 180 || Boolean(getHighlight(hit.contentId)?.length)
+}
+
+const shouldShowContentExpand = (hit: ContentHit): boolean => {
+  return contentHitBodyText(hit).length > 180 || Boolean(getHighlight(hit.contentId)?.length)
 }
 
 const formatRatio = (ratio?: number): string => {
@@ -1127,16 +1272,118 @@ const formatRatio = (ratio?: number): string => {
   return `${Math.round(ratio * 100)}%`
 }
 
+const contentTypeLabel = (contentType?: string): string => {
+  if (!contentType) return '-'
+  if (contentType === 'post') return '贴文'
+  if (contentType === 'comment') return '评论'
+  if (contentType === 'article') return '文章'
+  return contentType
+}
+
+const contentHitSourceMeta = (hit: ContentHit): string => {
+  const post = contentHitPost(hit)
+  return [
+    post?.platform || '-',
+    post?.language || '-',
+    contentTypeLabel(post?.contentType)
+  ].filter(Boolean).join(' · ')
+}
+
+const contributionPercent = (ratio?: number): number => {
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return 0
+  return Math.max(0, Math.min(100, Math.round(ratio * 100)))
+}
+
+const dominantContributionLabel = (hit: ContentHit): string => {
+  const media = contributionPercent(hit.contribution?.media?.ratio)
+  const text = contributionPercent(hit.contribution?.text?.ratio)
+  if (media <= 0 && text <= 0) return ''
+  if (media >= text) return `媒体贡献 ${media}%`
+  return `文本贡献 ${text}%`
+}
+
+const relevanceLabel = (hit: ContentHit): string => {
+  const level = relevanceLevel(hit)
+  if (level === 'high') return '高度相关'
+  if (level === 'medium') return '相关'
+  return '可能相关'
+}
+
+const relevanceClass = (hit: ContentHit): string => {
+  const level = relevanceLevel(hit)
+  if (level === 'high') return 'match-chip--high'
+  if (level === 'medium') return 'match-chip--medium'
+  return 'match-chip--low'
+}
+
+const relevanceLevel = (hit: ContentHit): 'high' | 'medium' | 'low' => {
+  const evidences = hit.evidences ?? []
+  if (evidences.some(isHighQualityEvidence)) return 'high'
+  if (evidences.some(isMediumQualityEvidence)) return 'medium'
+  return 'low'
+}
+
+const isHighQualityEvidence = (evidence: SearchEvidence): boolean => {
+  if (evidence.channel === 'ES_POST_KEYWORD') return (evidence.rank ?? 99) <= 2
+  if (evidence.channel === 'ES_MEDIA_KEYWORD') return (evidence.rank ?? 99) <= 2
+  const score = evidence.rawScore
+  if (typeof score !== 'number' || !Number.isFinite(score)) return false
+  if (evidence.hitField === 'visual_embedding') return score >= 0.92
+  if (['ocr_embedding', 'asr_embedding', 'caption_embedding', 'text_embedding'].includes(evidence.hitField || '')) {
+    return score >= 0.86
+  }
+  return score >= 0.9
+}
+
+const isMediumQualityEvidence = (evidence: SearchEvidence): boolean => {
+  if (evidence.channel === 'ES_POST_KEYWORD' || evidence.channel === 'ES_MEDIA_KEYWORD') return true
+  const score = evidence.rawScore
+  if (typeof score !== 'number' || !Number.isFinite(score)) return false
+  if (evidence.hitField === 'visual_embedding') return score >= 0.78
+  if (['ocr_embedding', 'asr_embedding', 'caption_embedding', 'text_embedding'].includes(evidence.hitField || '')) {
+    return score >= 0.72
+  }
+  return score >= 0.7
+}
+
+const mediaStrengthClass = (hit: ContentHit): string => {
+  if (hit.displaySuggestion !== 'MEDIA_FIRST') return ''
+  const media = hit.contribution?.media?.ratio ?? 0
+  if (media >= 0.7) return 'content-hit-card--media-strong'
+  if (media >= 0.55) return 'content-hit-card--media-medium'
+  return 'content-hit-card--media-weak'
+}
+
+const evidenceSummaryLabels = (hit: ContentHit): string[] => {
+  const labels = hit.evidences.map(evidence => evidenceSummaryLabel(hit, evidence)).filter(Boolean)
+  return Array.from(new Set(labels)).slice(0, 4)
+}
+
+const evidenceSummaryLabel = (hit: ContentHit, evidence: SearchEvidence): string => {
+  if (evidence.channel === 'ES_POST_KEYWORD') return '正文'
+  if (evidence.channel === 'MILVUS_POST_SEMANTIC') return '正文语义'
+  if (evidence.category === 'TEXT') return '正文'
+  if (evidence.channel === 'ES_MEDIA_KEYWORD') {
+    const asset = relatedAssetForEvidence(hit, evidence)
+    if (isAudioAsset(asset)) return '音频文字'
+    if (isVideoAsset(asset)) return '视频文字'
+    return '图片文字'
+  }
+  if (evidence.channel === 'MILVUS_MEDIA_SEMANTIC') {
+    const asset = relatedAssetForEvidence(hit, evidence)
+    if (evidence.hitField === 'visual_embedding') return '画面语义'
+    if (evidence.hitField === 'caption_embedding') return '媒体描述'
+    if (evidence.hitField === 'ocr_embedding') return '图片文字语义'
+    if (evidence.hitField === 'asr_embedding') return '音频语义'
+    return '媒体语义'
+  }
+  return evidenceLabel(hit, evidence)
+}
+
 const displaySuggestionLabel = (suggestion?: string): string => {
   if (suggestion === 'MEDIA_FIRST') return '媒体优先'
   if (suggestion === 'MIXED') return '混合命中'
   return '文本优先'
-}
-
-const displaySuggestionTagType = (suggestion?: string) => {
-  if (suggestion === 'MEDIA_FIRST') return 'success'
-  if (suggestion === 'MIXED') return 'warning'
-  return 'info'
 }
 
 const mediaTypeLabel = (mediaType?: string): string => {
@@ -1192,12 +1439,18 @@ const mediaPreviewComponent = (asset?: AssetHit | null): string => {
 const mediaPreviewProps = (asset?: AssetHit | null): Record<string, unknown> => {
   const src = mediaPreviewUrl(asset)
   if (isImageAsset(asset)) {
-    return { src, fit: 'cover' }
+    return { src, fit: shouldContainAsset(asset) ? 'contain' : 'cover' }
   }
   if (isVideoAsset(asset) || isAudioAsset(asset)) {
     return { src }
   }
   return {}
+}
+
+const shouldContainAsset = (asset?: AssetHit | null): boolean => {
+  if (!asset?.width || !asset?.height) return false
+  const ratio = asset.width / asset.height
+  return ratio < 0.72 || ratio > 1.9
 }
 
 const formatSegment = (asset?: AssetHit | null): string => {
@@ -1214,6 +1467,32 @@ const formatMillis = (value?: number): string => {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+const primaryAssetActionLabel = (hit: ContentHit): string => {
+  const asset = hit.primaryAsset
+  if (!asset) return '查看附件'
+  if (isVideoAsset(asset)) {
+    const start = formatMillis(asset.segmentStartMs ?? asset.previewTimeMs)
+    return start ? `从 ${start} 播放` : '查看视频'
+  }
+  if (isAudioAsset(asset)) {
+    const start = formatMillis(asset.segmentStartMs ?? asset.previewTimeMs)
+    return start ? `从 ${start} 播放` : '播放音频'
+  }
+  if (isImageAsset(asset)) {
+    return hit.displaySuggestion === 'MEDIA_FIRST' ? '查看命中图片' : '查看附件'
+  }
+  return '查看附件'
+}
+
+const openPrimaryAsset = (hit: ContentHit) => {
+  const url = mediaPreviewUrl(hit.primaryAsset)
+  if (!url) {
+    ElMessage.warning('暂无可打开的媒体地址')
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 const relatedAssetForEvidence = (hit: ContentHit, evidence: SearchEvidence): AssetHit | null =>
@@ -1473,13 +1752,16 @@ const graphOption = computed(() => {
 .search-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 20px;
+  width: min(1120px, calc(100vw - 48px));
+  margin: 0 auto;
 }
 
 .page-header h1 {
@@ -1489,24 +1771,32 @@ const graphOption = computed(() => {
   color: #111827;
 }
 
+.page-subtitle {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
 .muted-text {
   margin: 6px 0 0;
   font-size: 13px;
   color: #6b7280;
 }
 
-.scope-switcher {
-  display: flex;
-  justify-content: center;
+.mode-tabs {
+  flex: 0 0 auto;
 }
 
 .primary-search-card {
   width: min(1120px, calc(100vw - 48px));
   margin: 0 auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgb(15 23 42 / 4%);
 }
 
 .primary-search-card :deep(.el-card__body) {
-  padding: 28px 36px;
+  padding: 22px 28px;
 }
 
 .primary-input-area {
@@ -1535,7 +1825,7 @@ const graphOption = computed(() => {
   height: 52px;
   border: 1px solid #dcdfe6;
   border-right: 0;
-  border-radius: 6px 0 0 6px;
+  border-radius: 10px 0 0 10px;
   background: #fff;
   transition: border-color 0.15s ease;
 }
@@ -1590,10 +1880,12 @@ const graphOption = computed(() => {
 
 .primary-search-button {
   height: 52px;
-  width: 58px;
-  flex: 0 0 58px;
+  width: 88px;
+  flex: 0 0 88px;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
   font-size: 15px;
   font-weight: 600;
 }
@@ -1629,12 +1921,10 @@ const graphOption = computed(() => {
 .content-filter-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: 16px;
-  padding: 14px 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #f9fafb;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f7;
 }
 
 .filter-row {
@@ -1643,13 +1933,85 @@ const graphOption = computed(() => {
   gap: 12px;
 }
 
-.filter-row--fields {
-  grid-template-columns: minmax(360px, 1.6fr) minmax(180px, 0.75fr) minmax(180px, 0.75fr) 132px;
+.filter-row--quick {
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) max-content;
+  align-items: center;
+  justify-content: start;
 }
 
-.filter-row--controls {
-  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1fr) auto;
+.advanced-toggle {
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
+}
+
+.advanced-toggle__icon {
+  transition: transform 0.16s ease;
+}
+
+.advanced-toggle__icon.is-open {
+  transform: rotate(180deg);
+}
+
+.filter-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.filter-chip-label {
+  flex: 0 0 58px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 999px;
+  background: #fff;
+  color: #606266;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.filter-chip:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.filter-chip.is-active {
+  border-color: #409eff;
+  background: #ecf5ff;
+  color: #1677d2;
+}
+
+.advanced-filter-panel {
+  margin-top: 2px;
+  padding: 12px 16px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+}
+
+.advanced-filter-enter-active,
+.advanced-filter-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.advanced-filter-enter-from,
+.advanced-filter-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .more-options {
@@ -1680,24 +2042,36 @@ const graphOption = computed(() => {
   min-width: 180px;
 }
 
-.option-control--compact {
+.option-control--slider {
   min-width: 0;
 }
 
-.option-control--compact :deep(.el-input-number) {
-  width: 100%;
-}
-
-.option-control--slider {
-  min-width: 220px;
+.threshold-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 18px;
 }
 
 .option-control__label {
-  display: block;
-  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
   color: #6b7280;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.option-control__label strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+.option-control__hint {
+  display: block;
+  margin-top: -4px;
+  color: #86909c;
+  font-size: 12px;
 }
 
 .mt-sm {
@@ -1705,8 +2079,24 @@ const graphOption = computed(() => {
 }
 
 .target-radio-group {
-  justify-self: end;
+  display: flex;
+  flex-wrap: nowrap;
   white-space: nowrap;
+}
+
+.target-radio-group :deep(.el-radio-button__inner) {
+  border-color: #dcdfe6;
+  background: #fff;
+  color: #606266;
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+.target-radio-group :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  border-color: #409eff;
+  background: #ecf5ff;
+  box-shadow: -1px 0 0 0 #409eff;
+  color: #1677d2;
 }
 
 .mixed-result-layout {
@@ -1775,22 +2165,45 @@ const graphOption = computed(() => {
   color: #9ca3af;
 }
 
-.switch-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
 .result-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.result-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-size-select {
+  width: 112px;
+}
+
+.result-panel {
+  width: min(1120px, calc(100vw - 48px));
+  margin: 0 auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgb(15 23 42 / 4%);
+}
+
+.result-panel :deep(.el-card__header) {
+  padding: 14px 18px;
+  border-bottom-color: #eef2f7;
+  background: #fff;
+}
+
+.result-panel :deep(.el-card__body) {
+  padding: 18px;
 }
 
 .result-body {
-  min-height: 560px;
+  min-height: 360px;
 }
 
 .result-list {
@@ -1804,8 +2217,71 @@ const graphOption = computed(() => {
   cursor: pointer;
 }
 
+.search-empty-state {
+  display: flex;
+  min-height: 340px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.search-empty-state__icon {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 22px;
+}
+
+.search-empty-state h2 {
+  margin: 14px 0 6px;
+  color: #111827;
+  font-size: 18px;
+}
+
+.search-empty-state p {
+  max-width: 520px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.search-empty-state__examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.search-empty-state__examples button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 999px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.search-empty-state__examples button:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
 .content-hit-card :deep(.el-card__body) {
   padding: 16px;
+}
+
+.content-hit-card--text_first :deep(.el-card__body),
+.content-hit-card--mixed :deep(.el-card__body) {
+  padding: 14px 16px;
 }
 
 .content-hit-layout {
@@ -1814,9 +2290,23 @@ const graphOption = computed(() => {
   gap: 16px;
 }
 
+.content-hit-card--text_first .content-hit-layout,
+.content-hit-card--mixed .content-hit-layout {
+  gap: 10px;
+}
+
 .content-hit-card--media_first .content-hit-layout {
-  grid-template-columns: minmax(220px, 32%) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   align-items: start;
+  min-height: 210px;
+}
+
+.content-hit-card--media-medium .content-hit-layout {
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+}
+
+.content-hit-card--media-weak .content-hit-layout {
+  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr);
 }
 
 .content-hit-media {
@@ -1824,7 +2314,7 @@ const graphOption = computed(() => {
   overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  background: #f3f4f6;
+  background: #f7f8fa;
 }
 
 .content-hit-media__label {
@@ -1832,8 +2322,9 @@ const graphOption = computed(() => {
   z-index: 1;
   top: 8px;
   left: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
   background: rgb(17 24 39 / 72%);
   color: #fff;
   font-size: 12px;
@@ -1842,13 +2333,20 @@ const graphOption = computed(() => {
 .content-hit-media__preview {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  min-height: 180px;
+  height: 190px;
   object-fit: cover;
 }
 
 .content-hit-media__preview:empty {
   min-height: 180px;
+}
+
+.content-hit-card--media-medium .content-hit-media__preview {
+  height: 164px;
+}
+
+.content-hit-card--media-weak .content-hit-media__preview {
+  height: 128px;
 }
 
 .content-hit-media__segment {
@@ -1862,12 +2360,78 @@ const graphOption = computed(() => {
   min-width: 0;
 }
 
+.content-hit-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.content-hit-source {
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.content-hit-match-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.match-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.match-chip--muted {
+  background: #f6f7f9;
+  color: #6b7280;
+}
+
+.match-chip--high {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.match-chip--medium {
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  color: #52606d;
+}
+
+.match-chip--low {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.content-hit-time {
+  margin-top: 4px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 .content-hit-title {
   margin-top: 10px;
   color: #111827;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.content-hit-card--text_first .content-hit-title,
+.content-hit-card--mixed .content-hit-title {
+  margin-top: 8px;
+  font-size: 15px;
 }
 
 .content-hit-inline-media {
@@ -1905,19 +2469,31 @@ const graphOption = computed(() => {
   font-weight: 600;
 }
 
-.content-hit-evidence {
+.content-hit-evidence-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.content-hit-evidence span {
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #f3f4f6;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
   color: #64748b;
   font-size: 12px;
+}
+
+.content-hit-evidence-summary__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.content-hit-evidence-summary__main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-card__meta,
@@ -1926,6 +2502,11 @@ const graphOption = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.content-hit-card--text_first .result-card__footer,
+.content-hit-card--mixed .result-card__footer {
+  margin-top: 4px;
 }
 
 .tag-group,
@@ -2056,10 +2637,16 @@ const graphOption = computed(() => {
 }
 
 .body-text {
-  margin: 14px 0 8px;
+  margin: 12px 0 8px;
   line-height: 1.6;
   color: #111827;
   white-space: pre-wrap;
+}
+
+.content-hit-card--text_first .body-text,
+.content-hit-card--mixed .body-text {
+  margin: 8px 0 6px;
+  line-height: 1.55;
 }
 
 .body-text.collapsed {
@@ -2090,9 +2677,14 @@ const graphOption = computed(() => {
 }
 
 .result-card__stats {
-  margin: 12px 0;
+  margin: 10px 0;
   font-size: 13px;
   color: #4b5563;
+}
+
+.content-hit-card--text_first .result-card__stats,
+.content-hit-card--mixed .result-card__stats {
+  margin: 8px 0;
 }
 
 .graph-hops-switcher {
@@ -2113,18 +2705,52 @@ const graphOption = computed(() => {
 }
 
 @media (max-width: 768px) {
+  .page-header {
+    width: min(100%, calc(100vw - 32px));
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mode-tabs {
+    align-self: flex-start;
+  }
+
+  .primary-search-card,
+  .result-panel {
+    width: min(100%, calc(100vw - 32px));
+  }
+
   .primary-search-card :deep(.el-card__body) {
     padding: 16px;
   }
 
+  .primary-search-button {
+    width: 72px;
+    flex-basis: 72px;
+  }
+
   .filter-row,
-  .filter-row--fields,
-  .filter-row--controls {
+  .filter-row--quick {
     grid-template-columns: 1fr;
+  }
+
+  .filter-chip-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-chip-label {
+    flex-basis: auto;
   }
 
   .target-radio-group {
     justify-self: stretch;
+    width: 100%;
+  }
+
+  .threshold-group {
+    grid-template-columns: 1fr;
   }
 
   .target-radio-group :deep(.el-radio-button) {
@@ -2142,5 +2768,21 @@ const graphOption = computed(() => {
   .content-hit-card--media_first .content-hit-layout {
     grid-template-columns: 1fr;
   }
+
+  .content-hit-topline {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .content-hit-match-summary {
+    justify-content: flex-start;
+  }
+}
+
+.result-card__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
