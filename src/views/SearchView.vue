@@ -1365,6 +1365,9 @@ const evidenceSummaryLabel = (hit: ContentHit, evidence: SearchEvidence): string
   if (evidence.category === 'TEXT') return '正文'
   if (evidence.channel === 'ES_MEDIA_KEYWORD') {
     const asset = relatedAssetForEvidence(hit, evidence)
+    if (evidence.hitField === 'caption_text') return isImageAsset(asset) ? '图片描述' : '媒体描述'
+    if (evidence.hitField === 'ocr_text') return isImageAsset(asset) ? '图片文字' : '媒体文字'
+    if (evidence.hitField === 'asr_text') return '音频文字'
     if (isAudioAsset(asset)) return '音频文字'
     if (isVideoAsset(asset)) return '视频文字'
     return '图片文字'
@@ -1506,6 +1509,9 @@ const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[]
     (evidence.entityId === asset?.entityId || evidence.assetId === asset?.assetId)
   )
   if (related?.channel === 'ES_MEDIA_KEYWORD') {
+    if (related.hitField === 'caption_text') return isImageAsset(asset) ? '图片描述命中' : '媒体描述命中'
+    if (related.hitField === 'ocr_text') return isImageAsset(asset) ? '图片文字命中' : '媒体文字命中'
+    if (related.hitField === 'asr_text') return '音频转写命中'
     if (isAudioAsset(asset)) return '音频转写命中'
     if (isVideoAsset(asset)) return '视频文字命中'
     return '图片文字命中'
@@ -1519,7 +1525,10 @@ const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[]
   return `${mediaTypeLabel(asset?.mediaType)}资源命中`
 }
 
-const mediaKeywordEvidenceLabel = (asset?: AssetHit | null): string => {
+const mediaKeywordEvidenceLabel = (asset?: AssetHit | null, evidence?: SearchEvidence): string => {
+  if (evidence?.hitField === 'caption_text') return isImageAsset(asset) ? '图片描述命中' : '媒体描述命中'
+  if (evidence?.hitField === 'ocr_text') return isImageAsset(asset) ? '图片文字命中' : '媒体文字命中'
+  if (evidence?.hitField === 'asr_text') return '音频转写命中'
   if (isAudioAsset(asset)) return '音频转写命中'
   if (isVideoAsset(asset)) return '视频文字命中'
   if (isImageAsset(asset)) return '图片文字命中'
@@ -1553,7 +1562,7 @@ const evidenceLabel = (hit: ContentHit, evidence: SearchEvidence): string => {
   if (evidence.channel === 'NEO4J_GRAPH') return '实体关联'
   const asset = relatedAssetForEvidence(hit, evidence)
   if (evidence.channel === 'ES_MEDIA_KEYWORD') {
-    return mediaKeywordEvidenceLabel(asset)
+    return mediaKeywordEvidenceLabel(asset, evidence)
   }
   if (evidence.channel === 'MILVUS_MEDIA_SEMANTIC') {
     return mediaSemanticEvidenceLabel(asset, evidence)
