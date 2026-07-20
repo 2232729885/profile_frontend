@@ -83,8 +83,9 @@
             </div>
             <el-radio-group v-model="hybridForm.targetModalities" class="target-radio-group">
               <el-radio-button value="all">全部</el-radio-button>
-              <el-radio-button value="text">贴文</el-radio-button>
+              <el-radio-button value="text">文本</el-radio-button>
               <el-radio-button value="image">图片</el-radio-button>
+              <el-radio-button value="video">视频</el-radio-button>
             </el-radio-group>
           </div>
         </div>
@@ -361,7 +362,7 @@
 
                       <div class="content-hit-evidence">
                         <span v-for="evidence in hit.evidences.slice(0, 4)" :key="`${evidence.channel}-${evidence.rank}-${evidence.entityId || evidence.contentId}`">
-                          {{ evidenceLabel(evidence) }}
+                          {{ evidenceLabel(hit, evidence) }}
                         </span>
                       </div>
 
@@ -544,7 +545,7 @@ import {
 } from '@/api/search'
 
 type SearchMode = 'content' | 'account' | 'entity'
-type TargetModality = 'all' | 'text' | 'image'
+type TargetModality = 'all' | 'text' | 'image' | 'video'
 type ContentSearchReplay = 'content' | 'content-upload'
 
 interface SearchResult {
@@ -1129,7 +1130,7 @@ const formatRatio = (ratio?: number): string => {
 const displaySuggestionLabel = (suggestion?: string): string => {
   if (suggestion === 'MEDIA_FIRST') return '媒体优先'
   if (suggestion === 'MIXED') return '混合命中'
-  return '贴文优先'
+  return '文本优先'
 }
 
 const displaySuggestionTagType = (suggestion?: string) => {
@@ -1215,6 +1216,11 @@ const formatMillis = (value?: number): string => {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+const relatedAssetForEvidence = (hit: ContentHit, evidence: SearchEvidence): AssetHit | null =>
+  hit.matchedAssets?.find(asset =>
+    asset.entityId === evidence.entityId || asset.assetId === evidence.assetId
+  ) ?? hit.primaryAsset ?? null
+
 const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[] = []): string => {
   const related = evidences.find(evidence =>
     evidence.category === 'MEDIA' &&
@@ -1226,7 +1232,7 @@ const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[]
     return '图片文字命中'
   }
   if (related?.channel === 'MILVUS_MEDIA_SEMANTIC') {
-    if (related.hitField === 'visual_embedding') return '画面语义相关'
+    if (related.hitField === 'visual_embedding') return visualEvidenceLabel(related)
     if (related.hitField === 'asr_embedding') return '音频语义相关'
     if (related.hitField === 'caption_embedding') return '媒体描述相关'
     if (related.hitField === 'ocr_embedding') return '图片文字语义相关'
@@ -1234,21 +1240,44 @@ const mediaEvidenceLabel = (asset?: AssetHit | null, evidences: SearchEvidence[]
   return `${mediaTypeLabel(asset?.mediaType)}资源命中`
 }
 
-const evidenceLabel = (evidence: SearchEvidence): string => {
+const mediaKeywordEvidenceLabel = (asset?: AssetHit | null): string => {
+  if (isAudioAsset(asset)) return '音频转写命中'
+  if (isVideoAsset(asset)) return '视频文字命中'
+  if (isImageAsset(asset)) return '图片文字命中'
+  return '媒体文字命中'
+}
+
+const mediaSemanticEvidenceLabel = (asset: AssetHit | null, evidence: SearchEvidence): string => {
+  if (evidence.hitField === 'visual_embedding') return visualEvidenceLabel(evidence)
+  if (evidence.hitField === 'caption_embedding') return '媒体描述相关'
+  if (evidence.hitField === 'ocr_embedding') {
+    return isImageAsset(asset) ? '图片文字语义相关' : '媒体文字语义相关'
+  }
+  if (evidence.hitField === 'asr_embedding') {
+    return isAudioAsset(asset) || isVideoAsset(asset) ? '音频语义相关' : '媒体语义相关'
+  }
+  return '媒体语义相关'
+}
+
+const visualEvidenceLabel = (evidence?: SearchEvidence): string => {
+  const score = evidence?.rawScore
+  if (typeof score === 'number' && Number.isFinite(score)) {
+    if (score >= 0.98) return '原图/近似图命中'
+    if (score >= 0.9) return '高度相似图片'
+  }
+  return '画面语义相关'
+}
+
+const evidenceLabel = (hit: ContentHit, evidence: SearchEvidence): string => {
   if (evidence.channel === 'ES_POST_KEYWORD') return '命中正文'
-  if (evidence.channel === 'MILVUS_POST_SEMANTIC') return '贴文语义相关'
+  if (evidence.channel === 'MILVUS_POST_SEMANTIC') return '文本语义相关'
   if (evidence.channel === 'NEO4J_GRAPH') return '实体关联'
+  const asset = relatedAssetForEvidence(hit, evidence)
   if (evidence.channel === 'ES_MEDIA_KEYWORD') {
-    return evidence.hitField?.includes('asr') ? '音频转写命中' : '媒体文字命中'
+    return mediaKeywordEvidenceLabel(asset)
   }
   if (evidence.channel === 'MILVUS_MEDIA_SEMANTIC') {
-    const fieldLabels: Record<string, string> = {
-      visual_embedding: '画面语义相关',
-      ocr_embedding: '图片文字语义相关',
-      asr_embedding: '音频语义相关',
-      caption_embedding: '媒体描述相关'
-    }
-    return fieldLabels[evidence.hitField || ''] || '媒体语义相关'
+    return mediaSemanticEvidenceLabel(asset, evidence)
   }
   return evidence.channel
 }
